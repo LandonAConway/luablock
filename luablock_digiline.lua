@@ -28,7 +28,9 @@ minetest.register_node("luablock:luablock_digilines", {
 
           meta:set_string("error", "")
 
-          local env, t = luablock.digilines_execute_node(pos)
+          --executes the code with the full environment. This can only be edited
+          --by people with the 'luablock' priv.
+          local env, t = luablock.digilines_execute_internal(pos)
           env = env or {}
           local code = ""
           if type(msg) == "string" then
@@ -51,7 +53,9 @@ minetest.register_node("luablock:luablock_digilines", {
             end
           end
           if type(env) == "table" then
-            luablock.digilines_execute_code(pos,code,env,t)
+            --executes the code sent by digiline_send(...) with the environment returned by
+            --luablock.digilines_execute_internal(...)
+            luablock.digilines_execute_external(pos,code,env,t)
           end
         end,
       },
@@ -119,7 +123,7 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
   end
 end)
 
-function luablock.digilines_execute_node(pos)
+function luablock.digilines_execute_internal(pos)
   local execute = function(pos, _code)
     --environment
     local env = {}
@@ -134,7 +138,7 @@ function luablock.digilines_execute_node(pos)
     setfenv(_code, env)
     
     --execute code
-    return { result = _code() }
+    return { environment = _code() }
   end
 
   local meta = minetest.get_meta(pos)
@@ -143,17 +147,19 @@ function luablock.digilines_execute_node(pos)
   local success, result = pcall(execute,pos,code)
 
   if type(result) == "table" then
-    return result.result
+    return result.environment
   else
     meta:set_string("error", "internal error:"..result)
   end
 end
 
-function luablock.digilines_execute_code(pos,code,env,t)
+--env1 is the environment that is given by the luablock. Comes from a full environment.
+--env2 is the environment that is given by the player who uses digiline_send(...). Comes from a limited environment.
+function luablock.digilines_execute_external(pos,code,env1,env2)
   local execute = function(pos, _code)
     --environment
-    setmetatable(env,t or { __index = {} })
-    setfenv(_code, env)
+    setmetatable(env1,env2 or {})
+    setfenv(_code, env1)
     
     --execute code
     return { result = _code() }
