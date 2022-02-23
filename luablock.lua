@@ -457,14 +457,17 @@ end
 
 minetest.register_on_player_receive_fields(function(player, formname, fields)
   if formname == "luablock:luablock_formspec" then
-    local meta = player:get_meta()
-    local pos = minetest.string_to_pos(meta:get_string("luablock:pos"))
-    local node = minetest.registered_nodes[minetest.get_node(pos).name]
-    local node_meta = minetest.get_meta(pos)
-    if fields.execute then
-      node_meta:set_string("code",fields.code)
-    elseif fields.execute_on_globalstep then
-      node_meta:set_string("execute_on_globalstep",fields.execute_on_globalstep)
+    local is_approved = minetest.check_player_privs(player:get_player_name(),{luablock=true})
+    if is_approved then
+      local meta = player:get_meta()
+      local pos = minetest.string_to_pos(meta:get_string("luablock:pos"))
+      local node = minetest.registered_nodes[minetest.get_node(pos).name]
+      local node_meta = minetest.get_meta(pos)
+      if fields.execute then
+        node_meta:set_string("code",fields.code)
+      elseif fields.execute_on_globalstep then
+        node_meta:set_string("execute_on_globalstep",fields.execute_on_globalstep)
+      end
     end
   end
 end)
