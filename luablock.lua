@@ -2,6 +2,8 @@
 ------------------
 --The following code is responsible for storing and running the code stored in the Lua Blocks
 
+-- 'luablock.code' is a global table that contains values that are keyed by a position string produced by 'minetest.pos_to_string'
+
 local function luablock_create_env(pos)
   local is_on = luablock.is_on(pos)
   local env = {}
@@ -446,7 +448,7 @@ end
 
 function luablock.formspec(pos, globalstep_only)
   local meta = minetest.get_meta(pos)
-  local code = luablock.code[minetest.pos_to_string(pos)] or meta:get_string("code")
+  local code = luablock.code[minetest.pos_to_string(pos)] or ""
   local error = meta:get_string("error")
   local execute_on_globalstep = meta:get_string("execute_on_globalstep")
   if execute_on_globalstep == "" then
@@ -475,7 +477,7 @@ end
 
 function luablock.formspec_view(pos)
   local meta = minetest.get_meta(pos)
-  local code = meta:get_string("code")
+  local code = luablock.code[minetest.pos_to_string(pos)]
   local formspec = "formspec_version[5]" ..
   "size[14,16]" ..
   "textarea[0.9,0.9;12,14.6;code;Code;"..minetest.formspec_escape(code).."]"
@@ -491,7 +493,6 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
       local node = minetest.registered_nodes[minetest.get_node(pos).name]
       local node_meta = minetest.get_meta(pos)
       if fields.execute then
-        node_meta:set_string("code",fields.code)
         luablock.code[minetest.pos_to_string(pos)] = fields.code
       elseif fields.execute_on_globalstep then
         node_meta:set_string("execute_on_globalstep",fields.execute_on_globalstep)

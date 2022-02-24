@@ -158,7 +158,7 @@ minetest.register_node("luablock:luablock_digilines", {
 
 function luablock.digilines_formspec(pos)
   local meta = minetest.get_meta(pos)
-  local code = luablock.code[minetest.pos_to_string(pos)] or meta:get_string("code")
+  local code = luablock.code[minetest.pos_to_string(pos)] or ""
   local error = meta:get_string("error")
   local channel = meta:get_string("channel")
 
