@@ -1,3 +1,6 @@
+--Digiline Rules--
+------------------
+--This is a global variable and is used in the section below, so it must be created on top.
 local rules = {
 	{x = 1, y = 0, z = 0},
 	{x =-1, y = 0, z = 0},
@@ -6,6 +9,66 @@ local rules = {
 	{x = 0, y = 0, z = 1},
 	{x = 0, y = 0, z =-1},
 }
+
+--Luablock Code--
+-----------------
+--This code is responsible for executing the code that belongs to an individual Lua Block
+local luablock_digilines_execute_internal = function(pos)
+  local execute = function(pos, _code)
+    --environment
+    local env = {}
+    env.here = pos
+    env.print = function(message)
+      minetest.chat_send_all(message)
+    end
+    env.digiline_send = function(channel, msg)
+      digiline:receptor_send(pos,rules,channel,msg)
+    end
+    setmetatable(env,{ __index = _G })
+    setfenv(_code, env)
+    
+    --execute code
+    return { environment = _code() }
+  end
+
+  local meta = minetest.get_meta(pos)
+  local s_code = luablock.code[minetest.pos_to_string(pos)] or ""
+  local code, errMsg = loadstring(s_code);
+  local success, result = pcall(execute,pos,code)
+
+  if type(result) == "table" then
+    return result.environment
+  else
+    meta:set_string("error", "internal error:"..result)
+  end
+end
+
+--env1 is the environment that is given by the luablock. Comes from a full environment.
+--env2 is the environment that is given by the player who uses digiline_send(...). Comes from a limited environment.
+local luablock_digilines_execute_external = function(pos,code,env1,env2)
+  local execute = function(pos, _code)
+    --environment
+    setmetatable(env1,env2 or {})
+    setfenv(_code, env1)
+    
+    --execute code
+    return { result = _code() }
+  end
+
+  local func, errMsg = loadstring(code);
+  local success, result = pcall(execute,pos,func)
+
+  if type(result) == "table" then
+    return result.result
+  else
+    local meta = minetest.get_meta(pos)
+    meta:set_string("error", "external error:"..result)
+  end
+end
+
+
+--Nodes & Formspecs--
+---------------------
 
 minetest.register_node("luablock:luablock_digilines", {
     description = "Digilines Lua Block",
@@ -30,7 +93,7 @@ minetest.register_node("luablock:luablock_digilines", {
 
           --executes the code with the full environment. This can only be edited
           --by people with the 'luablock' priv.
-          local env, t = luablock.digilines_execute_internal(pos)
+          local env, t = luablock_digilines_execute_internal(pos)
           env = env or {}
           local code = ""
           if type(msg) == "string" then
@@ -53,9 +116,7 @@ minetest.register_node("luablock:luablock_digilines", {
             end
           end
           if type(env) == "table" then
-            --executes the code sent by digiline_send(...) with the environment returned by
-            --luablock.digilines_execute_internal(...)
-            luablock.digilines_execute_external(pos,code,env,t)
+            luablock_digilines_execute_external(pos,code,env,t)
           end
         end,
       },
@@ -88,12 +149,16 @@ minetest.register_node("luablock:luablock_digilines", {
         minetest.show_formspec(clicker:get_player_name(), "luablick:luablock_view_formspec",
           luablock.formspec_view(pos))
       end
+    end,
+
+    after_destruct = function(pos, oldnode)
+      luablock.code[minetest.pos_to_string(pos)] = nil
     end
 })
 
 function luablock.digilines_formspec(pos)
   local meta = minetest.get_meta(pos)
-  local code = meta:get_string("code")
+  local code = luablock.code[minetest.pos_to_string(pos)] or meta:get_string("code")
   local error = meta:get_string("error")
   local channel = meta:get_string("channel")
 
@@ -117,61 +182,8 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
       local node_meta = minetest.get_meta(pos)
       if fields.execute then
         node_meta:set_string("channel",fields.channel)
-        node_meta:set_string("code",fields.code)
+        luablock.code[minetest.pos_to_string(pos)] = fields.code
       end
     end
   end
 end)
-
-function luablock.digilines_execute_internal(pos)
-  local execute = function(pos, _code)
-    --environment
-    local env = {}
-    env.here = pos
-    env.print = function(message)
-      minetest.chat_send_all(message)
-    end
-    env.digiline_send = function(channel, msg)
-      digiline:receptor_send(pos,rules,channel,msg)
-    end
-    setmetatable(env,{ __index = _G })
-    setfenv(_code, env)
-    
-    --execute code
-    return { environment = _code() }
-  end
-
-  local meta = minetest.get_meta(pos)
-  local s_code = meta:get_string("code")
-  local code, errMsg = loadstring(s_code);
-  local success, result = pcall(execute,pos,code)
-
-  if type(result) == "table" then
-    return result.environment
-  else
-    meta:set_string("error", "internal error:"..result)
-  end
-end
-
---env1 is the environment that is given by the luablock. Comes from a full environment.
---env2 is the environment that is given by the player who uses digiline_send(...). Comes from a limited environment.
-function luablock.digilines_execute_external(pos,code,env1,env2)
-  local execute = function(pos, _code)
-    --environment
-    setmetatable(env1,env2 or {})
-    setfenv(_code, env1)
-    
-    --execute code
-    return { result = _code() }
-  end
-
-  local func, errMsg = loadstring(code);
-  local success, result = pcall(execute,pos,func)
-
-  if type(result) == "table" then
-    return result.result
-  else
-    local meta = minetest.get_meta(pos)
-    meta:set_string("error", "external error:"..result)
-  end
-end

@@ -1,3 +1,47 @@
+--Lua Block Code--
+------------------
+--The following code is responsible for storing and running the code stored in the Lua Blocks
+
+local function luablock_create_env(pos)
+  local is_on = luablock.is_on(pos)
+  local env = {}
+  env.here = pos
+  env.state = {}
+  env.state.on = is_on
+  env.state.off = not is_on
+  env.print = function(message)
+    minetest.chat_send_all(message)
+  end
+  setmetatable(env,{ __index = _G })
+  return env
+end
+
+local luablock_execute = function(pos,code,type)
+  local env = luablock_create_env(pos)
+  setfenv(code,env)
+  local result = code()
+  local code = luablock.code[minetest.pos_to_string(pos)]
+  local error = minetest.get_meta(pos):get_string("error")
+  if type == "receptor" then
+    if result then
+      minetest.set_node(pos,{name="luablock:luablock_receptor_on"})
+      luablock.code[minetest.pos_to_string(pos)] = code
+      minetest.get_meta(pos):set_string("error",error)
+      mesecon.receptor_on(pos,mesecon.rules.default)
+    else
+      minetest.set_node(pos,{name="luablock:luablock_receptor_off"})
+      luablock.code[minetest.pos_to_string(pos)] = code
+      minetest.get_meta(pos):set_string("error",error)
+      mesecon.receptor_off(pos,mesecon.rules.default)
+    end
+  end
+end
+
+
+--Nodes & Formspecs--
+---------------------
+--Registeration of nodes, formspec data, and receive fields
+
 local rules = {
 	{x = 1, y = 0, z = 0},
 	{x =-1, y = 0, z = 0},
@@ -14,9 +58,9 @@ minetest.register_abm({
   chance = 1,
   action = function(pos)
     local meta = minetest.get_meta(pos)
-    local s_code = meta:get_string("code")
+    local s_code = luablock.code[minetest.pos_to_string(pos)] or ""
     local code, errMsg = loadstring(s_code);
-    local success, err = pcall(luablock.execute,pos,code,"receptor")
+    local success, err = pcall(luablock_execute,pos,code,"receptor")
     meta:set_string("error",errMsg or err)
   end
 })
@@ -38,9 +82,9 @@ minetest.register_abm({
     end
 
     if allow_execute then
-      local s_code = meta:get_string("code")
+      local s_code = luablock.code[minetest.pos_to_string(pos)] or ""
       local code, errMsg = loadstring(s_code);
-      local success, err = pcall(luablock.execute,pos,code,"effector")
+      local success, err = pcall(luablock_execute,pos,code,"effector")
       meta:set_string("error",errMsg or err)
       meta:set_string("node_name", node_name)
     end
@@ -64,9 +108,9 @@ minetest.register_abm({
     end
 
     if allow_execute then
-      local s_code = meta:get_string("code")
+      local s_code = luablock.code[minetest.pos_to_string(pos)] or ""
       local code, errMsg = loadstring(s_code);
-      local success, err = pcall(luablock.execute,pos,code,"conductor")
+      local success, err = pcall(luablock_execute,pos,code,"conductor")
       meta:set_string("error",errMsg or err)
       meta:set_string("node_name", node_name)
     end
@@ -110,7 +154,7 @@ minetest.register_node("luablock:luablock_receptor_off", {
           minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_formspec", luablock.formspec(pos,
             true))
         elseif can_view then
-          minetest.show_formspec(clicker:get_player_name(), "luablick:luablock_view_formspec",
+          minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_view_formspec",
             luablock.formspec_view(pos))
         end
     end,
@@ -157,10 +201,14 @@ minetest.register_node("luablock:luablock_receptor_on", {
           minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_formspec", luablock.formspec(pos,
             true))
         elseif can_view then
-          minetest.show_formspec(clicker:get_player_name(), "luablick:luablock_view_formspec",
+          minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_view_formspec",
             luablock.formspec_view(pos))
         end
     end,
+
+    after_destruct = function(pos, oldnode)
+      luablock.code[minetest.pos_to_string(pos)] = nil
+    end
 })
 
 minetest.register_node("luablock:luablock_effector_off", {
@@ -204,10 +252,14 @@ minetest.register_node("luablock:luablock_effector_off", {
           minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_formspec", luablock.formspec(pos,
             false))
         elseif can_view then
-          minetest.show_formspec(clicker:get_player_name(), "luablick:luablock_view_formspec",
+          minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_view_formspec",
             luablock.formspec_view(pos))
         end
     end,
+
+    after_destruct = function(pos, oldnode)
+      luablock.code[minetest.pos_to_string(pos)] = nil
+    end
 })
 
 minetest.register_node("luablock:luablock_effector_on", {
@@ -255,10 +307,14 @@ minetest.register_node("luablock:luablock_effector_on", {
           minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_formspec", luablock.formspec(pos,
             false))
         elseif can_view then
-          minetest.show_formspec(clicker:get_player_name(), "luablick:luablock_view_formspec",
+          minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_view_formspec",
             luablock.formspec_view(pos))
         end
     end,
+
+    after_destruct = function(pos, oldnode)
+      luablock.code[minetest.pos_to_string(pos)] = nil
+    end
 })
 
 minetest.register_node("luablock:luablock_conductor_off", {
@@ -302,10 +358,14 @@ minetest.register_node("luablock:luablock_conductor_off", {
           minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_formspec", luablock.formspec(pos,
             false))
         elseif can_view then
-          minetest.show_formspec(clicker:get_player_name(), "luablick:luablock_view_formspec",
+          minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_view_formspec",
             luablock.formspec_view(pos))
         end
     end,
+
+    after_destruct = function(pos, oldnode)
+      luablock.code[minetest.pos_to_string(pos)] = nil
+    end
 })
 
 minetest.register_node("luablock:luablock_conductor_on", {
@@ -353,48 +413,15 @@ minetest.register_node("luablock:luablock_conductor_on", {
           minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_formspec", luablock.formspec(pos,
             false))
         elseif can_view then
-          minetest.show_formspec(clicker:get_player_name(), "luablick:luablock_view_formspec",
+          minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_view_formspec",
             luablock.formspec_view(pos))
         end
     end,
-})
 
-function luablock.execute(pos,code,type)
-  local env = luablock.create_env(pos)
-  setfenv(code,env)
-  local result = code()
-  local code = minetest.get_meta(pos):get_string("code")
-  local error = minetest.get_meta(pos):get_string("error")
-  if type == "receptor" then
-    if result then
-      minetest.set_node(pos,{name="luablock:luablock_receptor_on"})
-      minetest.get_meta(pos):set_string("code",code)
-      minetest.get_meta(pos):set_string("error",error)
-      mesecon.receptor_on(pos,mesecon.rules.default)
-    else
-      minetest.set_node(pos,{name="luablock:luablock_receptor_off"})
-      minetest.get_meta(pos):set_string("code",code)
-      minetest.get_meta(pos):set_string("error",error)
-      mesecon.receptor_off(pos,mesecon.rules.default)
+    after_destruct = function(pos, oldnode)
+      luablock.code[minetest.pos_to_string(pos)] = nil
     end
-  end
-end
-
---create global table _luablock so it can be used in the environment
-_luablock = {}
-function luablock.create_env(pos)
-  local is_on = luablock.is_on(pos)
-  local env = {}
-  env.here = pos
-  env.state = {}
-  env.state.on = is_on
-  env.state.off = not is_on
-  env.print = function(message)
-    minetest.chat_send_all(message)
-  end
-  setmetatable(env,{ __index = _G })
-  return env
-end
+})
 
 function luablock.is_on(pos)
   local node = minetest.get_node(pos)
@@ -419,7 +446,7 @@ end
 
 function luablock.formspec(pos, globalstep_only)
   local meta = minetest.get_meta(pos)
-  local code = meta:get_string("code")
+  local code = luablock.code[minetest.pos_to_string(pos)] or meta:get_string("code")
   local error = meta:get_string("error")
   local execute_on_globalstep = meta:get_string("execute_on_globalstep")
   if execute_on_globalstep == "" then
@@ -465,6 +492,7 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
       local node_meta = minetest.get_meta(pos)
       if fields.execute then
         node_meta:set_string("code",fields.code)
+        luablock.code[minetest.pos_to_string(pos)] = fields.code
       elseif fields.execute_on_globalstep then
         node_meta:set_string("execute_on_globalstep",fields.execute_on_globalstep)
       end
