@@ -133,7 +133,7 @@ minetest.register_node("luablock:luablock_receptor_off", {
     }},
     
     after_place_node = function(pos, placer, itemstack)
-      local can_use = minetest.check_player_privs(placer:get_player_name(),{luablock=true})
+      local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.remove_node(pos)
         minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
@@ -141,7 +141,7 @@ minetest.register_node("luablock:luablock_receptor_off", {
     end,
 
     can_dig = function(pos, player)
-      local can_use = minetest.check_player_privs(player:get_player_name(),{luablock=true})
+      local can_use = minetest.check_player_privs(player:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.chat_send_player(player:get_player_name(),"You do not have permission to dig this node.")
       end
@@ -149,7 +149,7 @@ minetest.register_node("luablock:luablock_receptor_off", {
     end,
     
     on_rightclick = function(pos, node, clicker, itemstack)
-        local can_use = minetest.check_player_privs(clicker:get_player_name(),{luablock=true})
+        local can_use = minetest.check_player_privs(clicker:get_player_name(),{server=true,luablock=true})
         local can_view = minetest.check_player_privs(clicker:get_player_name(),{luablock_view=true})
         if can_use then
           clicker:get_meta():set_string("luablock:pos",minetest.pos_to_string(pos))
@@ -180,7 +180,7 @@ minetest.register_node("luablock:luablock_receptor_on", {
     }},
     
     after_place_node = function(pos, placer, itemstack)
-      local can_use = minetest.check_player_privs(placer:get_player_name(),{luablock=true})
+      local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.remove_node(pos)
         minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
@@ -188,7 +188,7 @@ minetest.register_node("luablock:luablock_receptor_on", {
     end,
 
     can_dig = function(pos, player)
-      local can_use = minetest.check_player_privs(player:get_player_name(),{luablock=true})
+      local can_use = minetest.check_player_privs(player:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.chat_send_player(player:get_player_name(),"You do not have permission to dig this node.")
       end
@@ -196,7 +196,7 @@ minetest.register_node("luablock:luablock_receptor_on", {
     end,
     
     on_rightclick = function(pos, node, clicker, itemstack)
-        local can_use = minetest.check_player_privs(clicker:get_player_name(),{luablock=true})
+        local can_use = minetest.check_player_privs(clicker:get_player_name(),{server=true,luablock=true})
         local can_view = minetest.check_player_privs(clicker:get_player_name(),{luablock_view=true})
         if can_use then
           clicker:get_meta():set_string("luablock:pos",minetest.pos_to_string(pos))
@@ -229,7 +229,7 @@ minetest.register_node("luablock:luablock_effector_off", {
     }},
     
     after_place_node = function(pos, placer, itemstack)
-      local can_use = minetest.check_player_privs(placer:get_player_name(),{luablock=true})
+      local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.remove_node(pos)
         minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
@@ -239,7 +239,7 @@ minetest.register_node("luablock:luablock_effector_off", {
     end,
 
     can_dig = function(pos, player)
-      local can_use = minetest.check_player_privs(player:get_player_name(),{luablock=true})
+      local can_use = minetest.check_player_privs(player:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.chat_send_player(player:get_player_name(),"You do not have permission to dig this node.")
       end
@@ -247,7 +247,7 @@ minetest.register_node("luablock:luablock_effector_off", {
     end,
     
     on_rightclick = function(pos, node, clicker, itemstack)
-        local can_use = minetest.check_player_privs(clicker:get_player_name(),{luablock=true})
+        local can_use = minetest.check_player_privs(clicker:get_player_name(),{server=true,luablock=true})
         local can_view = minetest.check_player_privs(clicker:get_player_name(),{luablock_view=true})
         if can_use then
           clicker:get_meta():set_string("luablock:pos",minetest.pos_to_string(pos))
@@ -284,7 +284,7 @@ minetest.register_node("luablock:luablock_effector_on", {
     }},
     
     after_place_node = function(pos, placer, itemstack)
-      local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true})
+      local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.remove_node(pos)
         minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
@@ -294,7 +294,7 @@ minetest.register_node("luablock:luablock_effector_on", {
     end,
 
     can_dig = function(pos, player)
-      local can_use = minetest.check_player_privs(player:get_player_name(),{luablock=true})
+      local can_use = minetest.check_player_privs(player:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.chat_send_player(player:get_player_name(),"You do not have permission to dig this node.")
       end
@@ -302,7 +302,7 @@ minetest.register_node("luablock:luablock_effector_on", {
     end,
     
     on_rightclick = function(pos, node, clicker, itemstack)
-        local can_use = minetest.check_player_privs(clicker:get_player_name(),{server=true})
+        local can_use = minetest.check_player_privs(clicker:get_player_name(),{server=true,luablock=true})
         local can_view = minetest.check_player_privs(clicker:get_player_name(),{luablock_view=true})
         if can_use then
           clicker:get_meta():set_string("luablock:pos",minetest.pos_to_string(pos))
@@ -335,7 +335,7 @@ minetest.register_node("luablock:luablock_conductor_off", {
     }},
     
     after_place_node = function(pos, placer, itemstack)
-      local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true})
+      local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.remove_node(pos)
         minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
@@ -345,7 +345,7 @@ minetest.register_node("luablock:luablock_conductor_off", {
     end,
 
     can_dig = function(pos, player)
-      local can_use = minetest.check_player_privs(player:get_player_name(),{luablock=true})
+      local can_use = minetest.check_player_privs(player:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.chat_send_player(player:get_player_name(),"You do not have permission to dig this node.")
       end
@@ -353,7 +353,7 @@ minetest.register_node("luablock:luablock_conductor_off", {
     end,
     
     on_rightclick = function(pos, node, clicker, itemstack)
-        local can_use = minetest.check_player_privs(clicker:get_player_name(),{server=true})
+        local can_use = minetest.check_player_privs(clicker:get_player_name(),{server=true,luablock=true})
         local can_view = minetest.check_player_privs(clicker:get_player_name(),{luablock_view=true})
         if can_use then
           clicker:get_meta():set_string("luablock:pos",minetest.pos_to_string(pos))
@@ -390,7 +390,7 @@ minetest.register_node("luablock:luablock_conductor_on", {
     }},
     
     after_place_node = function(pos, placer, itemstack)
-      local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true})
+      local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.remove_node(pos)
         minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
@@ -400,7 +400,7 @@ minetest.register_node("luablock:luablock_conductor_on", {
     end,
 
     can_dig = function(pos, player)
-      local can_use = minetest.check_player_privs(player:get_player_name(),{luablock=true})
+      local can_use = minetest.check_player_privs(player:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.chat_send_player(player:get_player_name(),"You do not have permission to dig this node.")
       end
@@ -408,7 +408,7 @@ minetest.register_node("luablock:luablock_conductor_on", {
     end,
     
     on_rightclick = function(pos, node, clicker, itemstack)
-        local can_use = minetest.check_player_privs(clicker:get_player_name(),{server=true})
+        local can_use = minetest.check_player_privs(clicker:get_player_name(),{server=true,luablock=true})
         local can_view = minetest.check_player_privs(clicker:get_player_name(),{luablock_view=true})
         if can_use then
           clicker:get_meta():set_string("luablock:pos",minetest.pos_to_string(pos))
@@ -477,7 +477,7 @@ end
 
 function luablock.formspec_view(pos)
   local meta = minetest.get_meta(pos)
-  local code = luablock.code[minetest.pos_to_string(pos)]
+  local code = luablock.code[minetest.pos_to_string(pos)] or ""
   local formspec = "formspec_version[5]" ..
   "size[14,16]" ..
   "textarea[0.9,0.9;12,14.6;code;Code;"..minetest.formspec_escape(code).."]"
@@ -486,7 +486,7 @@ end
 
 minetest.register_on_player_receive_fields(function(player, formname, fields)
   if formname == "luablock:luablock_formspec" then
-    local is_approved = minetest.check_player_privs(player:get_player_name(),{luablock=true})
+    local is_approved = minetest.check_player_privs(player:get_player_name(),{server=true,luablock=true})
     if is_approved then
       local meta = player:get_meta()
       local pos = minetest.string_to_pos(meta:get_string("luablock:pos"))

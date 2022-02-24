@@ -28,7 +28,11 @@ local luablock_digilines_execute_internal = function(pos)
     setfenv(_code, env)
     
     --execute code
-    return { environment = _code() }
+    local result = _code()
+    if type(result) ~= "table" then
+      result = {}
+    end
+    return result
   end
 
   local meta = minetest.get_meta(pos)
@@ -37,19 +41,29 @@ local luablock_digilines_execute_internal = function(pos)
   local success, result = pcall(execute,pos,code)
 
   if type(result) == "table" then
-    return result.environment
-  else
+    return result
+  elseif type(result) == "string" then
     meta:set_string("error", "internal error:"..result)
+  elseif type(result) ~= "nil" then
+    meta:set_string("error", "internal error: \""..type(result).."\" is not a valid return type.")
   end
 end
 
---env1 is the environment that is given by the luablock. Comes from a full environment.
---env2 is the environment that is given by the player who uses digiline_send(...). Comes from a limited environment.
-local luablock_digilines_execute_external = function(pos,code,env1,env2)
+local timeout = function()
+  debug.sethook()
+  error("Timed out.")
+end
+
+local luablock_digilines_execute_external = function(pos,code,env,metatable,hook)
   local execute = function(pos, _code)
     --environment
-    setmetatable(env1,env2 or {})
-    setfenv(_code, env1)
+    setmetatable(env,metatable or {})
+    setfenv(_code, env)
+
+    --debug.set_hook
+    if hook then
+      debug.sethook(timeout,"",hook)
+    end
     
     --execute code
     return { result = _code() }
@@ -57,6 +71,7 @@ local luablock_digilines_execute_external = function(pos,code,env1,env2)
 
   local func, errMsg = loadstring(code);
   local success, result = pcall(execute,pos,func)
+  debug.sethook()
 
   if type(result) == "table" then
     return result.result
@@ -93,12 +108,16 @@ minetest.register_node("luablock:luablock_digilines", {
 
           --executes the code with the full environment. This can only be edited
           --by people with the 'luablock' priv.
-          local env, t = luablock_digilines_execute_internal(pos)
-          env = env or {}
+          local result = luablock_digilines_execute_internal(pos)
+
+          --handle the environment returned by the internal, and external code
+          local env = result.environment or {}
+          local metatable = result.metatable or {}
           local code = ""
           if type(msg) == "string" then
             code = msg or ""
           else
+            --get the second environment from digiline_send
             local _env = {}
 
             if type(msg.code) == "string" then code = msg.code
@@ -111,19 +130,38 @@ minetest.register_node("luablock:luablock_digilines", {
             elseif type(msg[1]) == "table" then _env = msg[1]
             elseif type(msg[2]) == "table" then _env = msg[2] end
 
+            --merge the second environment with the main one
             for k, v in pairs(_env) do
               env[k] = v
             end
           end
+
+          --handle hook
+          --The below code configures how debug.set_hook will be used when the local variable 'hook' is passed to
+          --'luablock_digilines_execute_external'.
+          --If 'hook' is set to nil when passed to 'luablock_digilines_execute_external' then debug.set_hook will not be used.
+          --If 'hook' is a string and is equel to "infinite" then 'hook' will be passed as nil. Otherwise it will be passed as
+          --as a number set to 25000.
+          --If 'hook' is nil or is not a number, then 'hook' will be passed as a number set to 25000.
+
+          local hook = result.hook
+          if type(hook) == "string" then
+            if hook == "infinite" then hook = nil 
+            else hook = 25000 end
+          elseif type(hook) ~= "number" then
+            hook = 25000
+          end
+
+          --execute external code
           if type(env) == "table" then
-            luablock_digilines_execute_external(pos,code,env,t)
+            luablock_digilines_execute_external(pos,code,env,metatable,hook)
           end
         end,
       },
     },
     
     after_place_node = function(pos, placer, itemstack)
-      local can_use = minetest.check_player_privs(placer:get_player_name(),{luablock=true})
+      local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.remove_node(pos)
         minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
@@ -131,7 +169,7 @@ minetest.register_node("luablock:luablock_digilines", {
     end,
 
     can_dig = function(pos, player)
-      local can_use = minetest.check_player_privs(player:get_player_name(),{luablock=true})
+      local can_use = minetest.check_player_privs(player:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.chat_send_player(player:get_player_name(),"You do not have permission to dig this node.")
       end
@@ -139,7 +177,7 @@ minetest.register_node("luablock:luablock_digilines", {
     end,
     
     on_rightclick = function(pos, node, clicker, itemstack)
-      local can_use = minetest.check_player_privs(clicker:get_player_name(),{luablock=true})
+      local can_use = minetest.check_player_privs(clicker:get_player_name(),{server=true,luablock=true})
       local can_view = minetest.check_player_privs(clicker:get_player_name(),{luablock_view=true})
       if can_use then
         clicker:get_meta():set_string("luablock:pos",minetest.pos_to_string(pos))
@@ -174,7 +212,7 @@ end
 
 minetest.register_on_player_receive_fields(function(player, formname, fields)
   if formname == "luablock:luablock_digilines_formspec" then
-    local is_approved = minetest.check_player_privs(player:get_player_name(),{luablock=true})
+    local is_approved = minetest.check_player_privs(player:get_player_name(),{server=true,luablock=true})
     if is_approved then
       local meta = player:get_meta()
       local pos = minetest.string_to_pos(meta:get_string("luablock:pos"))
