@@ -14,6 +14,12 @@ local function luablock_create_env(pos)
   env.print = function(message)
     minetest.chat_send_all(message)
   end
+
+  --lbapi
+  for k, v in pairs(luablock.lbapi.env) do
+    env[k] = v
+  end
+
   setmetatable(env,{ __index = _G })
   return env
 end
@@ -53,6 +59,15 @@ local rules = {
 	{x = 0, y = 0, z =-1},
 }
 
+local get_execute_on_globalstep = function(pos)
+  local meta = minetest.get_meta(pos)
+  local execute_on_globalstep = meta:get_string("execute_on_globalstep")
+  if execute_on_globalstep ~= "true" then
+    execute_on_globalstep = "false"
+  end
+  return execute_on_globalstep
+end
+
 minetest.register_abm({
   label = "luablock_receptor",
   nodenames = {"luablock:luablock_receptor_off", "luablock:luablock_receptor_on"},
@@ -79,7 +94,7 @@ minetest.register_abm({
     if meta:get_string("node_name") ~= node_name then
       allow_execute = true
     end
-    if meta:get_string("execute_on_globalstep") == "true" then
+    if get_execute_on_globalstep(pos) == "true" then
       allow_execute = true
     end
 
@@ -105,7 +120,7 @@ minetest.register_abm({
     if meta:get_string("node_name") ~= node_name then
       allow_execute = true
     end
-    if meta:get_string("execute_on_globalstep") == "true" then
+    if get_execute_on_globalstep(pos) == "true" then
       allow_execute = true
     end
 
@@ -118,6 +133,21 @@ minetest.register_abm({
     end
   end
 })
+
+local preserve_metadata = function(pos, oldnode, oldmeta, drops)
+  local key = minetest.pos_to_string(pos)
+  if type(luablock.code[key]) == "string" and luablock.code[key] ~= "" then
+    luablock.itemstacks_code[key] = luablock.code[key]
+    drops[1]:get_meta():set_string("old_pos", minetest.pos_to_string(pos))
+  end
+end
+
+local restore_code = function(itemstack)
+  local key = itemstack:get_meta():get_string("old_pos")
+  if luablock.itemstacks_code[key] then
+    luablock.code[key] = luablock.itemstacks_code[key]
+  end
+end
 
 minetest.register_node("luablock:luablock_receptor_off", {
     description = "Lua Block (Receptor)",
@@ -132,11 +162,15 @@ minetest.register_node("luablock:luablock_receptor_off", {
       rules = rules
     }},
     
+    preserve_metadata = preserve_metadata,
+    
     after_place_node = function(pos, placer, itemstack)
       local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.remove_node(pos)
         minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
+      else
+        restore_code(itemstack)
       end
     end,
 
@@ -179,11 +213,15 @@ minetest.register_node("luablock:luablock_receptor_on", {
       rules = rules
     }},
     
+    preserve_metadata = preserve_metadata,
+
     after_place_node = function(pos, placer, itemstack)
       local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
       if not can_use then
         minetest.remove_node(pos)
         minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
+      else
+        restore_code(itemstack)
       end
     end,
 
@@ -228,6 +266,8 @@ minetest.register_node("luablock:luablock_effector_off", {
       end,
     }},
     
+    preserve_metadata = preserve_metadata,
+
     after_place_node = function(pos, placer, itemstack)
       local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
       if not can_use then
@@ -235,6 +275,7 @@ minetest.register_node("luablock:luablock_effector_off", {
         minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
       else
         minetest.get_meta(pos):set_string("execute_on_globalstep", "false")
+        restore_code(itemstack)
       end
     end,
 
@@ -283,6 +324,8 @@ minetest.register_node("luablock:luablock_effector_on", {
       end,
     }},
     
+    preserve_metadata = preserve_metadata,
+
     after_place_node = function(pos, placer, itemstack)
       local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
       if not can_use then
@@ -290,6 +333,7 @@ minetest.register_node("luablock:luablock_effector_on", {
         minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
       else
         minetest.get_meta(pos):set_string("execute_on_globalstep", "false")
+        restore_code(itemstack)
       end
     end,
 
@@ -334,6 +378,8 @@ minetest.register_node("luablock:luablock_conductor_off", {
       rules = rules
     }},
     
+    preserve_metadata = preserve_metadata,
+
     after_place_node = function(pos, placer, itemstack)
       local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
       if not can_use then
@@ -341,6 +387,7 @@ minetest.register_node("luablock:luablock_conductor_off", {
         minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
       else
         minetest.get_meta(pos):set_string("execute_on_globalstep", "false")
+        restore_code(itemstack)
       end
     end,
 
@@ -389,6 +436,8 @@ minetest.register_node("luablock:luablock_conductor_on", {
       rules = rules
     }},
     
+    preserve_metadata = preserve_metadata,
+
     after_place_node = function(pos, placer, itemstack)
       local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
       if not can_use then
@@ -396,6 +445,7 @@ minetest.register_node("luablock:luablock_conductor_on", {
         minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
       else
         minetest.get_meta(pos):set_string("execute_on_globalstep", "false")
+        restore_code(itemstack)
       end
     end,
 
@@ -436,13 +486,13 @@ end
 -- formspec_version[4]
 -- size[14,16]
 -- textarea[0.9,0.9;12,11.3;code;Code;]
--- button_exit[5,14.7;4,0.8;execute;Execute]
+-- button[5,14.7;4,0.8;execute;Execute]
 -- textarea[0.9,12.9;12,1.5;error;Error;]
 
 -- formspec_version[4]
 -- size[14,16]
 -- textarea[0.9,1.6;12,10.6;code;Code;]
--- button_exit[5,14.7;4,0.8;execute;Execute]
+-- button[5,14.7;4,0.8;execute;Execute]
 -- textarea[0.9,12.9;12,1.5;error;Error;]
 -- checkbox[0.9,0.7;execute_on_globalstep;Execute on Globalstep;false]
 
@@ -458,13 +508,13 @@ function luablock.formspec(pos, globalstep_only)
   local formspec_globalstep_only = "formspec_version[4]"..
     "size[14,16]"..
     "textarea[0.9,0.9;12,11.3;code;Code;"..minetest.formspec_escape(code).."]"..
-    "button_exit[5,14.7;4,0.8;execute;Execute]"..
+    "button[5,14.7;4,0.8;execute;Execute]"..
     "textarea[0.9,12.9;12,1.5;error;Error;"..minetest.formspec_escape(error).."]"
     
   local formspec = "formspec_version[4]"..
   "size[14,16]"..
   "textarea[0.9,1.6;12,10.6;code;Code;"..minetest.formspec_escape(code).."]"..
-  "button_exit[5,14.7;4,0.8;execute;Execute]"..
+  "button[5,14.7;4,0.8;execute;Execute]"..
   "textarea[0.9,12.9;12,1.5;error;Error;"..minetest.formspec_escape(error).."]"..
   "checkbox[0.9,0.7;execute_on_globalstep;Execute on Globalstep;"..
     execute_on_globalstep.."]"
@@ -494,6 +544,7 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
       local node_meta = minetest.get_meta(pos)
       if fields.execute then
         luablock.code[minetest.pos_to_string(pos)] = fields.code
+        luablock.save_code()
       elseif fields.execute_on_globalstep then
         node_meta:set_string("execute_on_globalstep",fields.execute_on_globalstep)
       end

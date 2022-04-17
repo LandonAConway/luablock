@@ -23,11 +23,15 @@ minetest.register_privilege("luablock_view", {
 ------------------------------
 local save_luablocks_code = function()
     luablock.mod_storage.set_string("luablocks_code", minetest.serialize(luablock.code))
+    luablock.mod_storage.set_string("luablocks_itemstacks_code", minetest.serialize(luablock.itemstacks_code))
 end
 
 local load_luablocks_code = function()
     luablock.code = minetest.deserialize(luablock.mod_storage.get_string("luablocks_code")) or {}
+    luablock.itemstacks_code = minetest.deserialize(luablock.mod_storage.get_string("luablocks_itemstacks_code")) or {}
 end
+
+luablock.save_code = save_luablocks_code
 
 minetest.register_on_mods_loaded(function()
     load_luablocks_code()
@@ -37,5 +41,6 @@ minetest.register_on_shutdown(function()
     save_luablocks_code()
 end)
 
+dofile(minetest.get_modpath("luablock") .. "/lbapi.lua")
 dofile(minetest.get_modpath("luablock") .. "/luablock.lua")
 dofile(minetest.get_modpath("luablock") .. "/luablock_digiline.lua")
