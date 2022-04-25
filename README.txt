@@ -1,4 +1,4 @@
-Luablock v1.0
+Luablock v1.2
 
 
 DESCRIPTION

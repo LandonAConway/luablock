@@ -4,6 +4,16 @@
 
 -- 'luablock.code' is a global table that contains values that are keyed by a position string produced by 'minetest.pos_to_string'
 
+local load_memory = function(pos)
+  local meta = minetest.get_meta(pos)
+  return minetest.deserialize(meta:get_string("memory")) or {}
+end
+
+local save_memory = function(pos, memory)
+  local meta = minetest.get_meta(pos)
+  meta:set_string("memory", minetest.serialize(memory))
+end
+
 local function luablock_create_env(pos)
   local is_on = luablock.is_on(pos)
   local env = {}
@@ -11,8 +21,17 @@ local function luablock_create_env(pos)
   env.state = {}
   env.state.on = is_on
   env.state.off = not is_on
+  env.memory = load_memory(pos)
   env.print = function(message)
     minetest.chat_send_all(message)
+  end
+  env.load_memory = function(_pos)
+    if not _pos then _pos = pos end
+    return load_memory(_pos)
+  end
+  env.save_memory = function(_pos, memory)
+    if not _pos then _pos = pos end
+    save_memory(_pos, memory or {})
   end
 
   --lbapi
@@ -28,6 +47,7 @@ local luablock_execute = function(pos,code,type)
   local env = luablock_create_env(pos)
   setfenv(code,env)
   local result = code()
+  save_memory(pos, env.memory)
   local code = luablock.code[minetest.pos_to_string(pos)]
   local error = minetest.get_meta(pos):get_string("error")
   if type == "receptor" then

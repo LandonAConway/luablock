@@ -6,7 +6,15 @@ local function run_callbacks(callback_type, ...)
     for _, func in pairs(luablock.lbapi.callbacks["registered_"..callback_type]) do
         local status, err = pcall(func, ...)
         if not status then
-            minetest.chat_send_all("[LBAPI ERROR] :: "..err)
+            for _, plr in pairs(minetest.get_connected_players()) do
+                if minetest.check_player_privs(plr, {server=true}) then
+                    minetest.chat_send_player(plr:get_player_name(), "[LBAPI ERROR] :: "..err)
+                end
+            end
+        else
+            if type(err) == "table" then
+                return unpack(err)
+            end
         end
     end
 end
@@ -19,22 +27,35 @@ local unregister_callback = function(callback_type, name)
     luablock.lbapi.callbacks["registered_"..callback_type][name] = nil
 end
 
+luablock.lbapi.register_callback = register_callback
+luablock.lbapi.unregister_callback = unregister_callback
+
 local callback_types = {
     "globalstep",
+    "on_priv_grant",
+    "on_priv_revoke",
+    "on_modchannel_message",
     "on_chat_message",
+    "on_chatcommand",
     "on_cheat",
     "on_dieplayer",
     "on_dignode",
     "on_item_eat",
+    "on_rightclickplayer",
+    "on_craft",
+    "on_prejoinplayer",
     "on_joinplayer",
     "on_leaveplayer",
     "on_newplayer",
     "on_placenode",
+    "allow_player_inventory_action",
+    "on_player_inventory_action",
     "on_player_receive_fields",
     "on_protection_violation",
     "on_punchnode",
     "on_respawnplayer",
-    "on_shutdown"
+    "on_shutdown",
+    "on_authplayer"
 }
 
 for _, callback_type in pairs(callback_types) do
@@ -52,23 +73,10 @@ for _, callback_type in pairs(callback_types) do
     end
 
     --register the actual function wich will run the callbacks
+    if not minetest["register_"..callback_type] then
+        error("'minetest.register_"..callback_type.."' does not exist.")
+    end
     minetest["register_"..callback_type](function(...)
         run_callbacks(callback_type, ...)
     end)
 end
-
--- minetest.register_globalstep
--- minetest.register_on_chat_message
--- minetest.register_on_cheat
--- minetest.register_on_dieplayer
--- minetest.register_on_dignode
--- minetest.register_on_item_eat
--- minetest.register_on_joinplayer
--- minetest.register_on_leaveplayer
--- minetest.register_on_newplayer
--- minetest.register_on_placenode
--- minetest.register_on_player_receive_fields
--- minetest.register_on_protection_violation
--- minetest.register_on_punchnode
--- minetest.register_on_respawnplayer
--- minetest.register_on_shutdown

@@ -34,18 +34,42 @@ local luablock_recieve = function(uid)
   end
 end
 
-local get_memory = function(pos)
+--expose luablock_send
+luablock.luablock_send = luablock_send
+
+local load_memory = function(pos)
   local meta = minetest.get_meta(pos)
   return minetest.deserialize(meta:get_string("memory")) or {}
 end
 
-local set_memory = function(pos, memory)
+local save_memory = function(pos, memory)
   local meta = minetest.get_meta(pos)
   meta:set_string("memory", minetest.serialize(memory))
 end
 
---expose luablock_send
-luablock.luablock_send = luablock_send
+--This code handles the callbacks for the node's inventory and timer
+luablock.callbacks = {}
+
+local register_luablock_callback = function(pos, name, func)
+  local _pos = minetest.pos_to_string(pos)
+  luablock.callbacks[_pos] = luablock.callbacks[_pos] or {}
+  if type(func) ~= "function" then
+    func = nil
+  end
+  luablock.callbacks[_pos][name] = func
+end
+
+local call_luablock_callback = function(pos, name, ...)
+  local callback = luablock.callbacks[minetest.pos_to_string(pos)][name]
+  if type(callback) == "function" then
+    local status, err = pcall(callback, ...)
+      if not status then
+        meta:set_string("error", "luablock callback error:"..tostring(err))
+      else
+        return err
+      end
+  end
+end
 
 --This code is responsible for executing the code that belongs to an individual Lua Block
 local luablock_digilines_execute_internal = function(pos, event)
@@ -53,8 +77,9 @@ local luablock_digilines_execute_internal = function(pos, event)
     --environment
     local env = {}
     env.luablock = {
-      memory = get_memory(pos),
-      event = event
+      memory = load_memory(pos),
+      event = event,
+      callbacks = {}
     }
     env.here = pos
     env.luablock_send = function(channel, msg)
@@ -66,6 +91,25 @@ local luablock_digilines_execute_internal = function(pos, event)
     env.digiline_send = function(channel, msg)
       digiline:receptor_send(pos,rules,channel,msg)
     end
+    env.load_memory = function(_pos)
+      if not _pos then _pos = pos end
+      return load_memory(_pos)
+    end
+    env.save_memory = function(arg1, arg2)
+      local _pos
+      local memory
+      if arg1 and arg2 then
+        _pos = arg1
+        memory = arg2
+      elseif arg1 and not arg2 then
+        _pos = pos
+        memory = arg1
+      elseif not arg1 and not arg2 then
+        _pos = pos
+        memory = env.luablock.memory or {}
+      end
+      save_memory(_pos, memory or {})
+    end
     --lbapi
     for k, v in pairs(luablock.lbapi.env) do
       env[k] = v
@@ -75,12 +119,30 @@ local luablock_digilines_execute_internal = function(pos, event)
     
     --execute code
     local result = _code()
+
+    --register callbacks
+    local callback_names = {
+      "on_timer",
+      "on_receive_fields",
+      "allow_metadata_inventory_move",
+      "allow_metadata_inventory_put",
+      "allow_metadata_inventory_take",
+      "on_metadata_inventory_move",
+      "on_metadata_inventory_put",
+      "on_metadata_inventory_take"
+    }
+
+    for _, callback_name in pairs(callback_names) do
+      register_luablock_callback(pos, callback_name, env.luablock.callbacks[callback_name])
+    end
+
+    --save memory
+    save_memory(pos, env.luablock.memory or {})
+
+    --return result
     if type(result) ~= "table" then
       return {}
     end
-
-    --set memory
-    set_memory(pos, luablock.memory)
 
     return result
   end
@@ -157,60 +219,137 @@ local restore_code = function(pos, itemstack)
 end
 
 minetest.register_node("luablock:luablock_digilines", {
-    description = "Digilines Lua Block",
-    tiles = {"luablock_digilines.png"},
-    paramtype = "light",
-    is_ground_content = false,
-    groups = {cracky = 3, stone=2, oddly_breakable_by_hand = 3, not_in_creative_inventory = 1},
-    
-    digiline = {
-      receptor = {},
-      wire = {
-        rules = rules,
-      },
-      effector = {
-        action = function(pos,node,channel,msg)
-          luablock.handle_digilines_action(pos,node,channel,msg)
-        end,
-      },
+  description = "Digilines Lua Block",
+  tiles = {"luablock_digilines.png"},
+  paramtype = "light",
+  is_ground_content = false,
+  groups = {cracky = 3, stone=2, oddly_breakable_by_hand = 3, not_in_creative_inventory = 1},
+  
+  digiline = {
+    receptor = {},
+    wire = {
+      rules = rules,
     },
-    
-    preserve_metadata = preserve_metadata,
+    effector = {
+      action = function(pos,node,channel,msg)
+        luablock.handle_digilines_action(pos,node,channel,msg)
+      end,
+    },
+  },
+  
+  preserve_metadata = preserve_metadata,
 
-    after_place_node = function(pos, placer, itemstack)
-      local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
-      if not can_use then
-        minetest.remove_node(pos)
-        minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
-      else
-        restore_code(pos, itemstack)
-      end
-    end,
-
-    can_dig = function(pos, player)
-      local can_use = minetest.check_player_privs(player:get_player_name(),{server=true,luablock=true})
-      if not can_use then
-        minetest.chat_send_player(player:get_player_name(),"You do not have permission to dig this node.")
-      end
-      return can_use
-    end,
-    
-    on_rightclick = function(pos, node, clicker, itemstack)
-      local can_use = minetest.check_player_privs(clicker:get_player_name(),{server=true,luablock=true})
-      local can_view = minetest.check_player_privs(clicker:get_player_name(),{luablock_view=true})
-      if can_use then
-        clicker:get_meta():set_string("luablock:pos",minetest.pos_to_string(pos))
-        minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_digilines_formspec", 
-          luablock.digilines_formspec(pos))
-      elseif can_view then
-        minetest.show_formspec(clicker:get_player_name(), "luablick:luablock_view_formspec",
-          luablock.formspec_view(pos))
-      end
-    end,
-
-    after_destruct = function(pos, oldnode)
-      luablock.code[minetest.pos_to_string(pos)] = nil
+  after_place_node = function(pos, placer, itemstack)
+    local can_use = minetest.check_player_privs(placer:get_player_name(),{server=true,luablock=true})
+    if not can_use then
+      minetest.remove_node(pos)
+      minetest.chat_send_player(placer:get_player_name(),"You do not have permission to place this node.")
+    else
+      restore_code(pos, itemstack)
     end
+  end,
+
+  can_dig = function(pos, player)
+    local can_use = minetest.check_player_privs(player:get_player_name(),{server=true,luablock=true})
+    if not can_use then
+      minetest.chat_send_player(player:get_player_name(),"You do not have permission to dig this node.")
+    end
+    return can_use
+  end,
+  
+  on_rightclick = function(pos, node, clicker, itemstack)
+    local can_use = minetest.check_player_privs(clicker:get_player_name(),{server=true,luablock=true})
+    local can_view = minetest.check_player_privs(clicker:get_player_name(),{luablock_view=true})
+    if can_use then
+      clicker:get_meta():set_string("luablock:pos",minetest.pos_to_string(pos))
+      minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_digilines_formspec", 
+        luablock.digilines_formspec(pos))
+    elseif can_view then
+      minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_view_formspec",
+        luablock.formspec_view(pos))
+    end
+  end,
+
+  after_destruct = function(pos, oldnode)
+    luablock.code[minetest.pos_to_string(pos)] = nil
+    luablock.callbacks[minetest.pos_to_string(pos)] = nil
+  end,
+
+  --registerable callbacks in luablock code
+  on_timer = function(pos, ...)
+    local result call_luablock_callback(pos, "on_timer", pos, ...)
+    if type(result) ~= "boolean" and type(result) ~= "nil" then
+      return nil
+    end
+    return result
+  end,
+  on_receive_fields = function(pos, ...)
+    return call_luablock_callback(pos, "on_receive_fields", pos, ...)
+  end,
+  allow_metadata_inventory_move = function(pos, from_list, from_index, to_list, to_index, count, player)
+    local result = call_luablock_callback(pos, "allow_metadata_inventory_move", pos, from_list, from_index, to_list, to_index, count, player)
+    if type(result) ~= "number" then
+      return count
+    end
+    return result
+  end,
+  allow_metadata_inventory_put = function(pos, listname, index, stack, player)
+    local result = call_luablock_callback(pos, "allow_metadata_inventory_put", pos, listname, index, stack, player)
+    if type(result) ~= "number" then
+      return stack:get_count()
+    end
+    return result
+  end,
+  allow_metadata_inventory_take = function(pos, listname, index, stack, player)
+    local result = call_luablock_callback(pos, "allow_metadata_inventory_take", pos, listname, index, stack, player)
+    if type(result) ~= "number" then
+      return stack:get_count()
+    end
+    return result
+  end,
+  on_metadata_inventory_move = function(pos, ...)
+    return call_luablock_callback(pos, "on_metadata_inventory_move", pos, ...)
+  end,
+  on_metadata_inventory_put = function(pos, ...)
+    return call_luablock_callback(pos, "on_metadata_inventory_put", pos, ...)
+  end,
+  on_metadata_inventory_take = function(pos, ...)
+    return call_luablock_callback(pos, "on_metadata_inventory_take", pos, ...)
+  end,
+
+  -- on_timer = function(pos, elapsed),
+  --   -- default: nil
+  --   -- called by NodeTimers, see minetest.get_node_timer and NodeTimerRef.
+  --   -- elapsed is the total time passed since the timer was started.
+  --   -- return true to run the timer for another cycle with the same timeout
+  --   -- value.
+
+  --   on_receive_fields = function(pos, formname, fields, sender),
+  --   -- fields = {name1 = value1, name2 = value2, ...}
+  --   -- Called when an UI form (e.g. sign text input) returns data.
+  --   -- See minetest.register_on_player_receive_fields for more info.
+  --   -- default: nil
+
+  --   allow_metadata_inventory_move = function(pos, from_list, from_index, to_list, to_index, count, player),
+  --   -- Called when a player wants to move items inside the inventory.
+  --   -- Return value: number of items allowed to move.
+
+  --   allow_metadata_inventory_put = function(pos, listname, index, stack, player),
+  --   -- Called when a player wants to put something into the inventory.
+  --   -- Return value: number of items allowed to put.
+  --   -- Return value -1: Allow and don't modify item count in inventory.
+
+  --   allow_metadata_inventory_take = function(pos, listname, index, stack, player),
+  --   -- Called when a player wants to take something out of the inventory.
+  --   -- Return value: number of items allowed to take.
+  --   -- Return value -1: Allow and don't modify item count in inventory.
+
+  --   on_metadata_inventory_move = function(pos, from_list, from_index, to_list, to_index, count, player),
+  --   on_metadata_inventory_put = function(pos, listname, index, stack, player),
+  --   on_metadata_inventory_take = function(pos, listname, index, stack, player),
+  --   -- Called after the actual action has happened, according to what was
+  --   -- allowed.
+  --   -- No return value.
 })
 
 --Digiline Code--
@@ -328,6 +467,16 @@ end
 
 --Formspecs--
 -------------
+
+--To be added
+-- formspec_version[5]
+-- size[14,19]
+-- textarea[0.9,4.7;12,10.5;code;Code;]
+-- button[5,17.7;4,0.8;execute;Execute]
+-- textarea[0.9,15.9;12,1.5;error;Error;]
+-- textarea[0.9,3.3;12,0.7;channel;Channel;]
+-- checkbox[0.9,0.7;receive_all_events;Receive All Events;false]
+-- field[0.9,1.9;12,0.7;network;Network;]
 
 -- formspec_version[5]
 -- size[14,17]
