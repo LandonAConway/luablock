@@ -64,7 +64,7 @@ local call_luablock_callback = function(pos, name, ...)
   if type(callback) == "function" then
     local status, err = pcall(callback, ...)
       if not status then
-        meta:set_string("error", "luablock callback error:"..tostring(err))
+        minetest.get_meta(pos):set_string("error", "luablock callback error:"..tostring(err))
       else
         return err
       end
