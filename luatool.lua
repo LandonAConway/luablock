@@ -98,7 +98,7 @@ local set_error = function(stack, err)
 end
 
 local luatool_execute = function(stack)
-    local execute = function(stack, _code)
+    local execute = function(_code)
         --environment
         local env = {}
         env.luatool = {
@@ -128,9 +128,13 @@ local luatool_execute = function(stack)
 
     local code, syntaxErrMsg = loadstring(scode);
     local success, errMsg = pcall(execute,code)
-    
-    minetest.chat_send_all(tostring(code).." | "..tostring(syntaxErrMsg))
-    minetest.chat_send_all(tostring(success).." | "..tostring(errMsg))
+    if not code then
+        set_error(stack,syntaxErrMsg)
+    elseif not success then
+        set_error(stack,tostring(errMsg))
+    else
+        set_error(stack,"")
+    end
 end
 
 ---------------------
