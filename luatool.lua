@@ -1,4 +1,49 @@
-luablock.luatools = {}
+--------------------
+--Saving & Loading--
+--------------------
+
+function luablock.save_luatools()
+    local luatools = {}
+    for k, v in pairs(luablock.luatools) do
+        luatools[k] = {
+            code = v.code,
+            error = v.error,
+            memory = v.memory
+        }
+    end
+    luablock.mod_storage.set_string("luatools", minetest.serialize(luatools))
+end
+
+function luablock.load_luatools()
+    luablock.luatools = minetest.deserialize(luablock.mod_storage.get_string("luatools")) or {}
+    for _, luatool in pairs(luablock.luatools) do
+        luatool.needs_activation = true
+    end
+end
+
+minetest.register_on_mods_loaded(function()
+    luablock.load_luatools()
+end)
+
+function luablock.get_luatool(location)
+    local luatool
+    if type(location) == "userdata" then
+        luatool = luablock.luatools[location:get_meta():get_string("uid")]
+    elseif type(location) == "string" then
+        luatool = luablock.luatools[location]
+    end
+    return luatool
+end
+
+function luablock.luatool_activate(location)
+    local luatool = luablock.get_luatool(location)
+    if luatool.needs_activation then
+        luatool.callbacks = {}
+        luatool.commands = {}
+        luablock.luatool_execute(location)
+        luatool.needs_activation = nil
+    end
+end
 
 ---------------------------
 --Lua Tool Initialization--
@@ -39,9 +84,12 @@ luablock.luatool_init = function(stack)
         luablock.luatools[uid] = {
             code = "",
             error = "",
-            callbacks = {}
+            memory = {},
+            callbacks = {},
+            commands = {},
         }
     end
+    luablock.save_luatools()
     return stack
 end
 
@@ -49,8 +97,8 @@ end
 --Lua Tool Code Execution--
 ---------------------------
 
-local set_callbacks = function(stack, callbacks)
-    local luatool = luablock.luatools[stack:get_meta():get_string("uid")]
+local set_callbacks = function(location, callbacks)
+    local luatool = luablock.get_luatool(location)
     luatool.callbacks = luatool.callbacks or {}
     local callback_names = {
         "on_place",
@@ -68,41 +116,48 @@ local set_callbacks = function(stack, callbacks)
     end
 end
 
-local get_luatool_callback = function(stack, name)
-    local uid = stack:get_meta():get_string("uid")
+local get_luatool_callback = function(location, name)
     local default_callback = luablock.default_luatool_callbacks[name]
-    local luatool = luablock.luatools[uid]
+    local luatool = luablock.get_luatool(location)
     if luatool then
         local callback = luatool.callbacks[name]
         if type(callback) == "function" then
-            return callback
+            return false, callback
         end
     end
-    return default_callback
+    return true, default_callback
 end
 
-local call_luablock_callback = function(player, stack, name, ...)
-    local callback = get_luatool_callback(stack, name)
+local call_luatool_callback = function(player, location, name, ...)
+    local is_default, callback = get_luatool_callback(location, name)
     local status, result = pcall(callback, ...)
     if not status then
         if player then
-            minetest.chat_send_player(player:get_player_name(), "Lua Tool Error: "..tostring(result))
+            minetest.chat_send_player(player:get_player_name(), "Lua Tool Callback Error: "..tostring(result))
         end
     else
-        return result
+        return is_default, result
     end
 end
 
-local set_error = function(stack, err)
-    luablock.luatools[stack:get_meta():get_string("uid")].error = err
+local set_commands = function(location, commands)
+    local luatool = luablock.get_luatool(location)
+    luatool.commands = commands or {}
 end
 
-local luatool_execute = function(stack)
+local set_error = function(location, err)
+    luablock.get_luatool(location).error = err
+end
+
+local luatool_execute = function(location)
+    local luatool = luablock.get_luatool(location)
     local execute = function(_code)
         --environment
         local env = {}
         env.luatool = {
-            callbacks = {}
+            callbacks = {},
+            commands = {},
+            memory = luatool.memory,
         }
         env.print = function(msg)
             minetest.chat_send_all(msg)
@@ -117,29 +172,67 @@ local luatool_execute = function(stack)
         --execute code
         local result = _code()
 
-        --set callbacks
-        set_callbacks(stack, env.luatool.callbacks)
+        set_callbacks(location, env.luatool.callbacks)
+        set_commands(location, env.luatool.commands)
+        luablock.save_luatools()
     
         return result
     end
     
-    local scode = luablock.luatools[stack:get_meta():get_string("uid")].code or ""
-    minetest.chat_send_all(scode)
+    local scode = luatool.code or ""
 
     local code, syntaxErrMsg = loadstring(scode);
     local success, errMsg = pcall(execute,code)
     if not code then
-        set_error(stack,syntaxErrMsg)
+        set_error(location,syntaxErrMsg)
     elseif not success then
-        set_error(stack,tostring(errMsg))
+        set_error(location,tostring(errMsg))
     else
-        set_error(stack,"")
+        set_error(location,"")
     end
 end
 
----------------------
---Lua Tool Formspec--
----------------------
+luablock.luatool_execute = luatool_execute
+
+---------------------------------
+--Lua Tool Inventory & Formspec--
+---------------------------------
+
+local serialize_lists = function(lists)
+    local _t = {}
+    for name, list in pairs(lists) do
+        _t[name] = {}
+        for _, stack in pairs(list) do
+            table.insert(_t[name],{
+                stack = stack:to_table(),
+                metadata = stack:get_meta():to_table()
+            })
+        end
+    end
+    return minetest.serialize(_t)
+end
+
+local deserialize_lists = function(str)
+    local _t = minetest.deserialize(str) or {}
+    local lists = {}
+    for name, list in pairs(_t) do
+        lists[name] = {}
+        for _, stack in pairs(list) do
+            local _stack = ItemStack(stack.stack)
+            _stack:get_meta():from_table(stack.metadata or {})
+            table.insert(lists[name],_stack)
+        end
+    end
+    return lists
+end
+
+local save_inventory = function(inv)
+    luablock.mod_storage.set_string("luatool_inv", serialize_lists(inv:get_lists()))
+end
+
+local load_inventory = function(inv)
+    inv:set_lists(deserialize_lists(luablock.mod_storage.get_string("luatool_inv")))
+end
 
 minetest.register_on_joinplayer(function(player)
     local inv = minetest.create_detached_inventory("luatools_"..player:get_player_name(),{
@@ -147,39 +240,47 @@ minetest.register_on_joinplayer(function(player)
             if stack:get_name() == "luablock:luatool" then
                 local stack = luablock.luatool_init(stack)
                 inv:set_stack("tool", 1, stack)
+                save_inventory(inv)
                 luablock.show_luatool_formspec(player)
             end
         end,
         on_take = function(inv, listname, index, stack, player)
             if stack:get_name() == "luablock:luatool" then
+                save_inventory(inv)
                 luablock.show_luatool_formspec(player)
             end
         end
     })
+    load_inventory(inv)
     inv:set_size("tool", 1*1)
+    inv:set_size("main", 8*8)
 end)
 
 luablock.luatool_formspec = function(player)
     local inv_location = "luatools_"..player:get_player_name()
     local inv = minetest.get_inventory({type="detached",name=inv_location})
     local stack = inv:get_stack("tool",1)
-    local uid = ""
+    local luatool = luablock.get_luatool(stack)
     local code = ""
     local error = ""
+    local description = ""
     if stack:get_name() == "luablock:luatool" then
-        uid = stack:get_meta():get_string("uid")
-        code = luablock.luatools[uid].code or ""
-        error = luablock.luatools[uid].error or ""
+        code = luatool.code or ""
+        error = luatool.error or ""
+        description = stack:get_meta():get_string("description")
     end
 
     local formspec = "formspec_version[5]" ..
-    "size[25,15]" ..
-    "list[detached:"..inv_location..";tool;14.7,0.9;1,1;0]" ..
-    "list[current_player;main;14.7,2.9;8,4;0]" ..
-    "button[0.5,13.7;6.4,0.8;save;Save]" ..
-    "button[7.5,13.7;6.4,0.8;run;Run]" ..
-    "textarea[0.5,0.9;13.4,12.3;code;Code;"..code.."]" ..
-    "textarea[14.7,8.5;9.8,4.7;error;Error;"..error.."]"
+    "size[25,19]" ..
+    "list[detached:"..inv_location..";tool;0.5,0.9;1,1;0]" ..
+    "field[2,1.05;8.3,0.7;description;;"..description.."]" ..
+    "button[0.5,2.1;9.8,0.5;create;Create Lua Tool]"..
+    "list[detached:"..inv_location..";main;0.5,3.3;8,8;0]" ..
+    "list[current_player;main;0.5,13.8;8,4;0]" ..
+    "textarea[11.1,0.9;13.4,12.9;code;Code;"..code.."]" ..
+    "textarea[11.1,14.7;13.4,2.5;error;Error;"..error.."]"..
+    "button[11.1,17.7;6.4,0.8;save;Save]" ..
+    "button[18.1,17.7;6.4,0.8;run;Run]" 
 
     return formspec
 end
@@ -192,6 +293,11 @@ luablock.show_luatool_formspec = function(player)
         luablock.luatool_formspec(player))
 end
 
+local set_luatool_stack = function(player, stack)
+    local inv = minetest.get_inventory({type="detached",name="luatools_"..player:get_player_name()})
+    inv:set_stack("tool",1,stack)
+end
+
 minetest.register_on_player_receive_fields(function(player, formname, fields)
     if formname == "luablock:luatool_formspec_"..player:get_player_name() then
         local is_approved = minetest.check_player_privs(player:get_player_name(),{server=true,luablock=true})
@@ -199,21 +305,102 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
             local inv = minetest.get_inventory({type="detached",name="luatools_"..player:get_player_name()})
             local stack = inv:get_stack("tool", 1)
             if stack:get_name() == "luablock:luatool" then
-                local luatool = luablock.luatools[stack:get_meta():get_string("uid")]
+                local luatool = luablock.get_luatool(stack)
                 if fields.save then
+                    stack:get_meta():set_string("description", fields.description)
+                    set_luatool_stack(player, stack)
                     luatool.code = fields.code
+                    luablock.save_luatools()
                 elseif fields.run then
+                    stack:get_meta():set_string("description", fields.description)
+                    set_luatool_stack(player, stack)
+                    luatool.code = fields.code
+                    luablock.save_luatools()
                     luatool_execute(stack)
                 end
+            end
+            if fields.create then
+                local oldstack = inv:remove_item("tool", stack)
+                if inv:room_for_item("main", oldstack) then
+                    inv:add_item("main", oldstack)
+                else
+                    minetest.item_drop(oldstack, player, player:get_pos())
+                end
+                
+                local newstack = luablock.luatool_init(ItemStack("luablock:luatool"))
+                newstack:get_meta():set_string("description", fields.description)
+                inv:set_stack("tool", 1, newstack)
+                local newluatool = luablock.get_luatool(newstack)
+                newluatool.code = fields.code
+                luablock.save_luatools()
             end
         end
     end
 end)
 
-minetest.register_chatcommand("luatool", {
+minetest.register_chatcommand("luatool_editor", {
     description = "Opens formspec to edit a Lua Tool.",
+    privs = { server=true, luablock=true },
     func = function(name, text)
         luablock.show_luatool_formspec(name)
+    end
+})
+
+---------------------
+--Lua Tool Commands--
+---------------------
+
+local get_missing_privs = function(name, needed_privs)
+    local result, missing_privs = minetest.check_player_privs(name, needed_privs)
+    local _missing_privs = {}
+    if not result and type(missing_privs) == "table" then
+        for _, priv in pairs(missing_privs) do
+            table.insert(_missing_privs, priv)
+        end
+    end
+    return result, _missing_privs
+end
+
+local execute_luatool_command = function(location, command, name, text)
+    local luatool = luablock.get_luatool(location)
+    if not luatool then
+        luablock.luatool_init(location)
+    end
+    luablock.luatool_activate(location)
+    local commanddef = luatool.commands[command]
+    if type(commanddef) == "table" then
+        local player = minetest.get_player_by_name(name)
+        local result, missing_privs = get_missing_privs(name, commanddef.privs or {})
+        if result then
+            if type(commanddef.func) == "function" then
+                local status, result, message = pcall(commanddef.func, name, text)
+                if not status then
+                    return false, "Lua Tool Command Error: "..tostring(result)
+                end
+                return result, message
+            end
+        end
+        return false, "You don't have permission to run this command (Missing Privileges: "..table.concat(missing_privs, ", ")..")"
+    end
+    return false, "The command '"..command.."' does not exist for the current Lua Tool."
+end
+
+minetest.register_chatcommand("luatool", {
+    description = "Executes a Lua Tool command.",
+    func = function(name, params)
+        local player = minetest.get_player_by_name(name)
+        local wielded_item = player:get_wielded_item()
+        if wielded_item:get_name() == "luablock:luatool" then
+            local _params = string.split(params, " ")
+            local command = _params[1]
+            if command then
+                table.remove(_params, 1)
+                local text = table.concat(_params, " ")
+                return execute_luatool_command(wielded_item, command, name, text)
+            end
+            return false, "Please type a command."
+        end
+        return false, "The wielded item is not a Lua Tool."
     end
 })
 
@@ -225,7 +412,7 @@ luablock.default_luatool_callbacks = {
     on_place = function(itemstack, placer, pointed_thing) end,
     on_secondary_use = function(itemstack, user, pointed_thing) end,
     on_drop = function(itemstack, dropper, pos)
-        return itemstack
+        return minetest.item_drop(itemstack, dropper, pos)
     end,
     on_use = function(itemstack, user, pointed_thing) end,
     after_use = function(itemstack, user, node, digparams) end,
@@ -237,31 +424,32 @@ minetest.register_tool("luablock:luatool", {
     groups = {not_in_creative_inventory=1},
 
     on_place = function(itemstack, placer, pointed_thing)
-        local result = call_luablock_callback(placer, itemstack, "on_place",
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(placer, itemstack, "on_place",
             itemstack, placer, pointed_thing)
         return result
     end,
     on_secondary_use = function(itemstack, user, pointed_thing)
-        local result = call_luablock_callback(user, itemstack, "on_secondary_use",
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_secondary_use",
             itemstack, user, pointed_thing)
         return result
     end,
     on_drop = function(itemstack, dropper, pos)
-        local result = call_luablock_callback(dropper, itemstack, "on_drop",
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(dropper, itemstack, "on_drop",
             itemstack, dropper, pos)
-        if type(result) ~= "ItemStack" then
-            return luablock.default_luatool_callbacks.on_drop(itemstack, dropper, pos)
-        end
         return result
     end,
     on_use = function(itemstack, user, pointed_thing)
-        local default_callback = luablock.default_luatool_callbacks.on_use
-        local result = call_luablock_callback(user, itemstack, "on_use",
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_use",
             itemstack, user, pointed_thing)
         return result
     end,
     after_use = function(itemstack, user, node, digparams)
-        local result = call_luablock_callback(user, itemstack, "after_use",
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "after_use",
             itemstack, user, node, digparams)
         return result
     end,
