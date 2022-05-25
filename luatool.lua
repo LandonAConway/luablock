@@ -226,35 +226,62 @@ local deserialize_lists = function(str)
     return lists
 end
 
-local save_inventory = function(inv)
-    luablock.mod_storage.set_string("luatool_inv", serialize_lists(inv:get_lists()))
+local save_inventory = function(player, inv)
+    luablock.mod_storage.set_string("luatool_inv_"..player:get_player_name(), serialize_lists(inv:get_lists()))
 end
 
-local load_inventory = function(inv)
-    inv:set_lists(deserialize_lists(luablock.mod_storage.get_string("luatool_inv")))
+local load_inventory = function(player, inv)
+    inv:set_lists(deserialize_lists(luablock.mod_storage.get_string("luatool_inv_"..player:get_player_name())))
 end
 
 minetest.register_on_joinplayer(function(player)
     local inv = minetest.create_detached_inventory("luatools_"..player:get_player_name(),{
         on_put = function(inv, listname, index, stack, player)
-            if stack:get_name() == "luablock:luatool" then
-                local stack = luablock.luatool_init(stack)
-                inv:set_stack("tool", 1, stack)
-                save_inventory(inv)
+            if luablock.valid_luatools[stack:get_name()] and listname == "tool" then
+                local _stack = luablock.luatool_init(stack)
+                inv:set_stack("tool", 1, _stack)
+                save_inventory(player, inv)
                 luablock.show_luatool_formspec(player)
             end
         end,
         on_take = function(inv, listname, index, stack, player)
-            if stack:get_name() == "luablock:luatool" then
-                save_inventory(inv)
+            if luablock.valid_luatools[stack:get_name()] and listname == "tool" then
+                save_inventory(player, inv)
                 luablock.show_luatool_formspec(player)
+            end
+        end,
+        on_move = function(inv, from_list, from_index, to_list, to_index, count, player)
+            local stack = inv:get_stack(to_list, to_index)
+            if luablock.valid_luatools[stack:get_name()] then
+                if to_list == "tool" then
+                    local _stack = luablock.luatool_init(stack)
+                    inv:set_stack("tool", 1, _stack)
+                    save_inventory(player, inv)
+                    luablock.show_luatool_formspec(player)
+                else
+                    save_inventory(player, inv)
+                    luablock.show_luatool_formspec(player)
+                end
             end
         end
     })
-    load_inventory(inv)
+    load_inventory(player, inv)
     inv:set_size("tool", 1*1)
     inv:set_size("main", 8*8)
 end)
+
+-- "formspec_version[5]" ..
+-- "size[25,19]" ..
+-- "list[detached:;tool;0.5,0.9;1,1;0]" ..
+-- "field[2,1.2;8.3,0.7;description;Description;]" ..
+-- "button[5.5,2.1;4.8,0.5;create;Create Lua Tool]" ..
+-- "list[detached:;main;0.5,3.3;8,8;0]" ..
+-- "list[current_player;main;0.5,13.8;8,4;0]" ..
+-- "textarea[11.1,0.9;13.4,12.9;code;Code;]" ..
+-- "textarea[11.1,14.7;13.4,2.5;error;Error;]" ..
+-- "button[11.1,17.7;6.4,0.8;save;Save]" ..
+-- "button[18.1,17.7;6.4,0.8;run;Run]" ..
+-- "dropdown[0.5,2.1;4.8,0.5;luatool_type;Lua Tool,Lua Tool (Apple),Lua Tool (Magnetic Card);1;true]"
 
 luablock.luatool_formspec = function(player)
     local inv_location = "luatools_"..player:get_player_name()
@@ -264,7 +291,7 @@ luablock.luatool_formspec = function(player)
     local code = ""
     local error = ""
     local description = ""
-    if stack:get_name() == "luablock:luatool" then
+    if luablock.valid_luatools[stack:get_name()] then
         code = luatool.code or ""
         error = luatool.error or ""
         description = stack:get_meta():get_string("description")
@@ -273,12 +300,13 @@ luablock.luatool_formspec = function(player)
     local formspec = "formspec_version[5]" ..
     "size[25,19]" ..
     "list[detached:"..inv_location..";tool;0.5,0.9;1,1;0]" ..
-    "field[2,1.05;8.3,0.7;description;;"..description.."]" ..
-    "button[0.5,2.1;9.8,0.5;create;Create Lua Tool]"..
+    "field[2,1.05;8.3,0.7;description;;"..minetest.formspec_escape(description).."]" ..
+    "dropdown[0.5,2.1;4.8,0.5;luatool_type;Lua Tool,Lua Tool (Apple),Lua Tool (Magnetic Card);1;true]"..
+    "button[5.5,2.1;4.8,0.5;create;Create Lua Tool]"..
     "list[detached:"..inv_location..";main;0.5,3.3;8,8;0]" ..
     "list[current_player;main;0.5,13.8;8,4;0]" ..
-    "textarea[11.1,0.9;13.4,12.9;code;Code;"..code.."]" ..
-    "textarea[11.1,14.7;13.4,2.5;error;Error;"..error.."]"..
+    "textarea[11.1,0.9;13.4,12.9;code;Code;"..minetest.formspec_escape(code).."]" ..
+    "textarea[11.1,14.7;13.4,2.5;error;Error;"..minetest.formspec_escape(error).."]"..
     "button[11.1,17.7;6.4,0.8;save;Save]" ..
     "button[18.1,17.7;6.4,0.8;run;Run]" 
 
@@ -304,7 +332,7 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
         if is_approved then
             local inv = minetest.get_inventory({type="detached",name="luatools_"..player:get_player_name()})
             local stack = inv:get_stack("tool", 1)
-            if stack:get_name() == "luablock:luatool" then
+            if luablock.valid_luatools[stack:get_name()] then
                 local luatool = luablock.get_luatool(stack)
                 if fields.save then
                     stack:get_meta():set_string("description", fields.description)
@@ -320,6 +348,12 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
                 end
             end
             if fields.create then
+                local luatool_type = "luablock:luatool"
+                if fields.luatool_type == "2" then
+                    luatool_type = "luablock:luatool_apple"
+                elseif fields.luatool_type == "3" then
+                    luatool_type = "luablock:luatool_magentic_card"
+                end
                 local oldstack = inv:remove_item("tool", stack)
                 if inv:room_for_item("main", oldstack) then
                     inv:add_item("main", oldstack)
@@ -327,7 +361,7 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
                     minetest.item_drop(oldstack, player, player:get_pos())
                 end
                 
-                local newstack = luablock.luatool_init(ItemStack("luablock:luatool"))
+                local newstack = luablock.luatool_init(ItemStack(luatool_type))
                 newstack:get_meta():set_string("description", fields.description)
                 inv:set_stack("tool", 1, newstack)
                 local newluatool = luablock.get_luatool(newstack)
@@ -390,7 +424,7 @@ minetest.register_chatcommand("luatool", {
     func = function(name, params)
         local player = minetest.get_player_by_name(name)
         local wielded_item = player:get_wielded_item()
-        if wielded_item:get_name() == "luablock:luatool" then
+        if luablock.valid_luatools[wielded_item:get_name()] then
             local _params = string.split(params, " ")
             local command = _params[1]
             if command then
@@ -408,6 +442,12 @@ minetest.register_chatcommand("luatool", {
 --Lua Tool Registration--
 -------------------------
 
+luablock.valid_luatools = {
+    ["luablock:luatool"] = true,
+    ["luablock:luatool_apple"] = true,
+    ["luablock:luatool_magentic_card"] = true
+}
+
 luablock.default_luatool_callbacks = {
     on_place = function(itemstack, placer, pointed_thing) end,
     on_secondary_use = function(itemstack, user, pointed_thing) end,
@@ -421,6 +461,80 @@ luablock.default_luatool_callbacks = {
 minetest.register_tool("luablock:luatool", {
     description = "Lua Tool",
     inventory_image = "luablock_luatool.png",
+    groups = {not_in_creative_inventory=1},
+
+    on_place = function(itemstack, placer, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(placer, itemstack, "on_place",
+            itemstack, placer, pointed_thing)
+        return result
+    end,
+    on_secondary_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_secondary_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    on_drop = function(itemstack, dropper, pos)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(dropper, itemstack, "on_drop",
+            itemstack, dropper, pos)
+        return result
+    end,
+    on_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    after_use = function(itemstack, user, node, digparams)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "after_use",
+            itemstack, user, node, digparams)
+        return result
+    end,
+})
+
+minetest.register_tool("luablock:luatool_apple", {
+    description = "Lua Tool (Apple)",
+    inventory_image = "default_apple.png",
+    groups = {not_in_creative_inventory=1},
+
+    on_place = function(itemstack, placer, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(placer, itemstack, "on_place",
+            itemstack, placer, pointed_thing)
+        return result
+    end,
+    on_secondary_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_secondary_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    on_drop = function(itemstack, dropper, pos)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(dropper, itemstack, "on_drop",
+            itemstack, dropper, pos)
+        return result
+    end,
+    on_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    after_use = function(itemstack, user, node, digparams)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "after_use",
+            itemstack, user, node, digparams)
+        return result
+    end,
+})
+
+minetest.register_tool("luablock:luatool_magentic_card", {
+    description = "Lua Tool (Magnetic Card)",
+    inventory_image = "luablock_luatool_magnetic_card.png",
     groups = {not_in_creative_inventory=1},
 
     on_place = function(itemstack, placer, pointed_thing)
