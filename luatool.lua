@@ -159,8 +159,15 @@ local luatool_execute = function(location)
             commands = {},
             memory = luatool.memory,
         }
-        env.print = function(msg)
-            minetest.chat_send_all(msg)
+        env.print = function(...)
+            local params = {...}
+            if params[2] and type(params[1]) == "string" then
+                if minetest.get_player_by_name(params[1]) then
+                    minetest.chat_send_player(params[1], tostring(params[2]))
+                end
+            else
+                minetest.chat_send_all(tostring(params[1]))
+            end
         end
         --lbapi
         for k, v in pairs(luablock.lbapi.env) do
@@ -270,6 +277,23 @@ minetest.register_on_joinplayer(function(player)
     inv:set_size("main", 8*8)
 end)
 
+local luatool_types = {
+    "luablock:luatool",
+    "luablock:luatool_apple",
+    "luablock:luatool_skeleton_key",
+    "luablock:luatool_key",
+    "luablock:luatool_magentic_card"
+}
+
+local get_luatool_types_descriptions = function()
+    local descriptions = {}
+    for _, name in pairs(luatool_types) do
+        local def = minetest.registered_items[name]
+        table.insert(descriptions, minetest.formspec_escape(def.description))
+    end
+    return descriptions
+end
+
 -- "formspec_version[5]" ..
 -- "size[25,19]" ..
 -- "list[detached:;tool;0.5,0.9;1,1;0]" ..
@@ -301,7 +325,7 @@ luablock.luatool_formspec = function(player)
     "size[25,19]" ..
     "list[detached:"..inv_location..";tool;0.5,0.9;1,1;0]" ..
     "field[2,1.05;8.3,0.7;description;;"..minetest.formspec_escape(description).."]" ..
-    "dropdown[0.5,2.1;4.8,0.5;luatool_type;Lua Tool,Lua Tool (Apple),Lua Tool (Magnetic Card);1;true]"..
+    "dropdown[0.5,2.1;4.8,0.5;luatool_type;"..table.concat(get_luatool_types_descriptions(), ",")..";1;true]"..
     "button[5.5,2.1;4.8,0.5;create;Create Lua Tool]"..
     "list[detached:"..inv_location..";main;0.5,3.3;8,8;0]" ..
     "list[current_player;main;0.5,13.8;8,4;0]" ..
@@ -348,11 +372,10 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
                 end
             end
             if fields.create then
+                local luatool_type_index = tonumber(fields.luatool_type)
                 local luatool_type = "luablock:luatool"
-                if fields.luatool_type == "2" then
-                    luatool_type = "luablock:luatool_apple"
-                elseif fields.luatool_type == "3" then
-                    luatool_type = "luablock:luatool_magentic_card"
+                if luatool_type_index then
+                    luatool_type = luatool_types[luatool_type_index]
                 end
                 local oldstack = inv:remove_item("tool", stack)
                 if inv:room_for_item("main", oldstack) then
@@ -445,6 +468,8 @@ minetest.register_chatcommand("luatool", {
 luablock.valid_luatools = {
     ["luablock:luatool"] = true,
     ["luablock:luatool_apple"] = true,
+    ["luablock:luatool_skeleton_key"] = true,
+    ["luablock:luatool_key"] = true,
     ["luablock:luatool_magentic_card"] = true
 }
 
@@ -498,6 +523,80 @@ minetest.register_tool("luablock:luatool", {
 minetest.register_tool("luablock:luatool_apple", {
     description = "Lua Tool (Apple)",
     inventory_image = "default_apple.png",
+    groups = {not_in_creative_inventory=1},
+
+    on_place = function(itemstack, placer, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(placer, itemstack, "on_place",
+            itemstack, placer, pointed_thing)
+        return result
+    end,
+    on_secondary_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_secondary_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    on_drop = function(itemstack, dropper, pos)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(dropper, itemstack, "on_drop",
+            itemstack, dropper, pos)
+        return result
+    end,
+    on_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    after_use = function(itemstack, user, node, digparams)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "after_use",
+            itemstack, user, node, digparams)
+        return result
+    end,
+})
+
+minetest.register_tool("luablock:luatool_skeleton_key", {
+    description = "Lua Tool (Key)",
+    inventory_image = "default_key.png",
+    groups = {not_in_creative_inventory=1},
+
+    on_place = function(itemstack, placer, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(placer, itemstack, "on_place",
+            itemstack, placer, pointed_thing)
+        return result
+    end,
+    on_secondary_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_secondary_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    on_drop = function(itemstack, dropper, pos)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(dropper, itemstack, "on_drop",
+            itemstack, dropper, pos)
+        return result
+    end,
+    on_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    after_use = function(itemstack, user, node, digparams)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "after_use",
+            itemstack, user, node, digparams)
+        return result
+    end,
+})
+
+minetest.register_tool("luablock:luatool_key", {
+    description = "Lua Tool (Skeleton Key)",
+    inventory_image = "default_key_skeleton.png",
     groups = {not_in_creative_inventory=1},
 
     on_place = function(itemstack, placer, pointed_thing)

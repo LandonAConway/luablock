@@ -36,6 +36,7 @@ end)
 
 function luablock.add_script(name, def)
     if type(name) == "string" and name ~= "" then
+        def = def or {}
         def.name = name
         def.code = def.code or ""
         if type(def.run_when_server_starts) ~= "boolean" then
@@ -77,14 +78,23 @@ local show_error = function(error)
     end
 end
 
-function luablock.run_script(name)
+function luablock.run_script(name, message)
     local script = luablock.scripts[name]
     if script then
         local execute = function(_code)
             --environment
-            local env = {}
-            env.print = function(msg)
-                minetest.chat_send_all(msg)
+            local env = {
+                message = message
+            }
+            env.print = function(...)
+                local params = {...}
+                if params[2] and type(params[1]) == "string" then
+                    if minetest.get_player_by_name(params[1]) then
+                        minetest.chat_send_player(params[1], tostring(params[2]))
+                    end
+                else
+                    minetest.chat_send_all(tostring(params[1]))
+                end
             end
             --lbapi
             for k, v in pairs(luablock.lbapi.env) do
@@ -115,12 +125,17 @@ function luablock.run_script(name)
 end
 
 --add functions to lbapi
-luablock.lbapi.env.add_script = function(name, def)
-    luablock.add_script(name, def)
+luablock.lbapi.env.get_script = function(name)
+    return luablock.scripts[name]
 end
 
-luablock.lbapi.env.update_script = function(name, def)
-    luablock.update_script(name, def)
+luablock.lbapi.env.set_script = function(name, def)
+    local script = luablock.scripts[name]
+    if script then
+        luablock.update_script(name, def)
+    else
+        luablock.add_script(name, def)
+    end
 end
 
 luablock.lbapi.env.rename_script = function(name, newname)
@@ -131,8 +146,8 @@ luablock.lbapi.env.remove_script = function(name)
     luablock.remove_script(name)
 end
 
-luablock.lbapi.env.run_script = function(name)
-    return luablock.run_script(name)
+luablock.lbapi.env.run_script = function(name, message)
+    return luablock.run_script(name, message)
 end
 
 ------------
