@@ -30,6 +30,9 @@ local function luablock_create_env(pos)
             minetest.chat_send_all(tostring(params[1]))
         end
     end
+    env.luablock_network_send = function(network, channel, msg)
+        luablock.network_send(pos, network, minetest.get_node(pos), channel, msg)
+    end
 
     -- lbapi
     for k, v in pairs(luablock.lbapi.env) do

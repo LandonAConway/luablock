@@ -97,9 +97,9 @@ local get_output_rules = function(node)
     return minetest.registered_nodes[node.name].mesecons.receptor.rules
 end
 
-local get_ports = function(pos, refresh)
+local get_ports = function(pos, reset)
     local ports = {a=false,b=false,c=false,d=false,e=false,f=false}
-    if not refresh then
+    if not reset then
         local output_rules = get_output_rules(minetest.get_node(pos))
         for _, rule in pairs(output_rules) do
             local port_name = port_names[rule.x..rule.y..rule.z]
@@ -133,7 +133,8 @@ local set_pin = function(pos, rule_name, new_state)
     minetest.get_meta(pos):set_string("pins", minetest.serialize(pins))
 end
 
-local set_new_state = function(pos, _ports)
+local set_new_state = function(pos, _ports, reset)
+    local old_ports = get_ports(pos, false)
     local node_name = minetest.get_node(pos).name
     local pins = get_pins(pos)
     for port_name, state in pairs(_ports) do
@@ -143,8 +144,30 @@ local set_new_state = function(pos, _ports)
     end
     local new_node_name = get_node_name(_ports)
     minetest.swap_node(pos, {name=new_node_name})
-    mesecon.receptor_on(pos, get_output_rules({name=new_node_name}))
-    mesecon.receptor_off(pos, get_input_rules({name=new_node_name}))
+    
+
+    if reset then
+        mesecon.receptor_on(pos, get_output_rules({name=new_node_name}))
+        mesecon.receptor_off(pos, get_input_rules({name=new_node_name}))
+    else
+        local input_rules = {}
+        local output_rules = {}
+        local new_ports = get_ports(pos, false)
+        local _port_names = {"a","b","c","d","e","f"}
+        for _, port_name in pairs(_port_names) do
+            --check if port changed
+            if new_ports[port_name] ~= old_ports[port_name] then
+                local port = new_ports[port_name]
+                if port == true and pins[port_name] ~= true then
+                    table.insert(output_rules, ports[port_name])
+                else
+                    table.insert(input_rules, ports[port_name])
+                end
+            end
+        end
+        mesecon.receptor_on(pos, output_rules)
+        mesecon.receptor_off(pos, input_rules)
+    end
 end
 
 local interrupts = {}
@@ -161,7 +184,7 @@ local perform_interrupt = function(pos, time, iid)
     if not intp[iid] then
         intp[iid] = true
         minetest.after(time, function()
-            if luablock.code[minetest.string_to_pos(pos)] then
+            if luablock.code[minetest.pos_to_string(pos)] then
                 luablock.handle_digilines_action(pos, minetest.get_node(pos), "", {type="interrupt",iid=iid})
             end
             intp[iid] = nil
@@ -174,7 +197,7 @@ end
 ------------------
 local luablock_messages = {}
 
-local luablock_send = function(pos, channel, msg)
+local luablock_send = function(pos, channel, msg, _rules)
     local random = 0
     repeat
         random = math.random(1, 1000000)
@@ -183,18 +206,18 @@ local luablock_send = function(pos, channel, msg)
     local uid = "uid" .. random
     luablock_messages[uid] = msg
 
-    digiline:receptor_send(pos, rules, channel, {
+    digiline:receptor_send(pos, _rules or rules, channel, {
         type = "luablock_msg",
         uid = uid
     })
+    
+    minetest.after(5, function()
+        luablock_messages[uid] = nil
+    end)
 end
 
 local luablock_recieve = function(uid)
-    local msg = luablock_messages[uid]
-    if msg then
-        luablock_messages[uid] = nil
-        return msg
-    end
+    return luablock_messages[uid]
 end
 
 -- expose luablock_send
@@ -234,6 +257,80 @@ local call_luablock_callback = function(pos, name, ...)
     end
 end
 
+--networks
+local load_networks = function()
+    return minetest.deserialize(luablock.mod_storage.get_string("networks")) or {}
+end
+
+local save_networks = function()
+    luablock.mod_storage.set_string("networks", minetest.serialize(luablock.networks))
+end
+
+luablock.networks = load_networks()
+
+local get_network_data = function(pos)
+    local meta = minetest.get_meta(pos)
+    local network_name = meta:get_string("network")
+    local node = minetest.get_node(pos)
+    local node_def = minetest.registered_nodes[node.name]
+    local data = {}
+    data.pos = pos
+    data.is_digilines_luablock = (node_def.is_digilines_luablock == true)
+    data.is_private = true
+    local network = luablock.networks[network_name]
+    if network then
+        data.network_name = network_name
+        data.is_private = false
+    end
+    return data
+end
+
+function luablock.network_send(from_pos, network, node, channel, msg)
+    if minetest.registered_nodes[node.name].is_digilines_luablock == true then
+        local nt = type(network)
+        if nt == "string" then
+            local network = luablock.networks[network]
+            if network then
+                local _msg = {
+                    type = "luablock_network_msg",
+                    snd = get_network_data(from_pos),
+                    msg = msg
+                }
+                luablock.handle_digilines_action(network.pos, node, channel, _msg)
+                return true
+            end
+        else
+            error("string expected, got "..nt)
+        end
+    end
+    return false
+end
+
+local remove_network = function(pos)
+    local network_name = minetest.get_meta(pos):get_string("network")
+    luablock.networks[network_name] = nil
+    save_networks()
+end
+
+local set_network = function(pos, name)
+    local meta = minetest.get_meta(pos)
+    remove_network(pos)
+    meta:set_string("network", name)
+    if type(name) == "string" and name ~= "" then
+        local network = luablock.networks[name]
+        if not network or (minetest.pos_to_string(pos) == minetest.pos_to_string(network.pos)) then
+            luablock.networks[name] = {name=name,pos=pos}
+            minetest.get_meta(pos):set_string("network_error", "")
+        else
+            minetest.get_meta(pos):set_string("network_error", "network error: network "..
+                "'"..name.."' is already registered at a different location.")
+        end
+    else
+        minetest.get_meta(pos):set_string("network_error", "")
+    end
+    save_networks()
+end
+
 -- This code is responsible for executing the code that belongs to an individual Lua Block
 local luablock_digilines_execute_internal = function(pos, event)
     local execute = function(pos, _code)
@@ -249,6 +346,9 @@ local luablock_digilines_execute_internal = function(pos, event)
         env.here = pos
         env.luablock_send = function(channel, msg)
             luablock_send(pos, channel, msg)
+        end
+        env.luablock_network_send = function(network, channel, msg)
+            luablock.network_send(pos, network, minetest.get_node(pos), channel, msg)
         end
         env.print = function(...)
             local params = {...}
@@ -314,7 +414,11 @@ local luablock_digilines_execute_internal = function(pos, event)
         save_memory(pos, env.luablock.memory or {})
 
         -- set ports
-        set_new_state(pos, env.luablock.port or {})
+        local reset = event.type == "program"
+        if env.luablock.reset_ports == true then
+            reset = true
+        end
+        set_new_state(pos, env.luablock.port or {}, reset)
 
         -- return result
         if type(result) ~= "table" then
@@ -328,6 +432,11 @@ local luablock_digilines_execute_internal = function(pos, event)
     local s_code = luablock.code[minetest.pos_to_string(pos)] or ""
     local code, errMsg = loadstring(s_code);
     local success, result = pcall(execute, pos, code)
+    local network_error = meta:get_string("network_error")
+    
+    if network_error ~= "" then
+        meta:set_string("error", network_error)
+    end
 
     if type(result) == "table" then
         return result
@@ -492,6 +601,14 @@ function luablock.handle_digilines_action(pos, node, channel, msg)
             msg = luablock_msg
         }
         luablock_digilines_execute_internal(pos, event)
+    elseif msg.type == "luablock_network_msg" then
+        local event = {
+            type = msg.type,
+            channel = channel,
+            snd = msg.snd,
+            msg = msg.msg
+        }
+        luablock_digilines_execute_internal(pos, event)
     elseif msg.type == "off" then
         local event = {
             type = msg.type,
@@ -558,36 +675,43 @@ function luablock.digilines_formspec(pos)
     local code = luablock.code[minetest.pos_to_string(pos)] or ""
     local error = meta:get_string("error")
     local channel = meta:get_string("channel")
+    local network = meta:get_string("network")
 
     if recieve_all_events ~= "true" then
         recieve_all_events = "false"
     end
 
-    local formspec = "formspec_version[5]" .. "size[14,17]" .. "textarea[0.9,3.3;12,9.9;code;Code;" ..
-                         minetest.formspec_escape(code) .. "]" .. "button[5,15.7;4,0.8;execute;Execute]" ..
-                         "textarea[0.9,13.9;12,1.5;error;Error;" .. minetest.formspec_escape(error) .. "]" ..
-                         "textarea[0.9,1.9;12,0.7;channel;Channel;" .. minetest.formspec_escape(channel) .. "]" ..
-                         "checkbox[0.9,0.7;receive_all_events;Receive All Events;" .. recieve_all_events .. "]"
+    local formspec = "formspec_version[5]" .. "size[14,19]" .. 
+        "textarea[0.9,4.7;12,10.5;code;Code;" .. minetest.formspec_escape(code) .. "]" ..
+        "button[5,17.7;4,0.8;execute;Execute]" ..
+        "textarea[0.9,15.9;12,1.5;error;Error;" .. minetest.formspec_escape(error) .. "]" ..
+        "field[0.9,1.9;12,0.7;network;Network;" .. minetest.formspec_escape(network) .. "]" ..
+        "field[0.9,3.3;12,0.7;channel;Channel;" .. minetest.formspec_escape(channel) .. "]" ..
+        "checkbox[0.9,0.7;receive_all_events;Receive All Events;" .. recieve_all_events .. "]"
 
     return formspec
 end
 
 minetest.register_on_player_receive_fields(function(player, formname, fields)
-    if formname == "luablock:luablock_digilines_formspec" then
+    if formname == "luablock:luablock_digilines_formspec_"..player:get_player_name() then
         local is_approved = minetest.check_player_privs(player:get_player_name(), {
             server = true,
             luablock = true
         })
         if is_approved then
+            local name = player:get_player_name()
             local meta = player:get_meta()
             local pos = minetest.string_to_pos(meta:get_string("luablock:pos"))
             local node = minetest.registered_nodes[minetest.get_node(pos).name]
             local node_meta = minetest.get_meta(pos)
             if fields.execute then
                 node_meta:set_string("channel", fields.channel)
+                set_network(pos, fields.network)
                 luablock.code[minetest.pos_to_string(pos)] = fields.code
                 luablock.save_code()
                 luablock.handle_digilines_action(pos, node, "", {type="program"})
+                minetest.show_formspec(name, "luablock:luablock_digilines_formspec_"..name,
+                    luablock.digilines_formspec(pos))
             elseif fields.receive_all_events then
                 node_meta:set_string("receive_all_events", fields.receive_all_events)
             end
@@ -638,6 +762,7 @@ local luablock_def = {
             end
         }
     },
+    is_digilines_luablock = true,
 
     preserve_metadata = preserve_metadata,
 
@@ -675,12 +800,16 @@ local luablock_def = {
         })
         if can_use then
             clicker:get_meta():set_string("luablock:pos", minetest.pos_to_string(pos))
-            minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_digilines_formspec",
+            minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_digilines_formspec_"..clicker:get_player_name(),
                 luablock.digilines_formspec(pos))
         elseif can_view then
-            minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_view_formspec",
+            minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_view_formspec_"..clicker:get_player_name(),
                 luablock.formspec_view(pos))
         end
+    end,
+
+    on_destruct = function(pos)
+        remove_network(pos)
     end,
 
     after_destruct = function(pos, oldnode)
@@ -748,10 +877,16 @@ for f = 0, 1 do
   local state = mesecon.state.off
   local paramtype
   local light_source
+  local drop
   if id ~= "000000" then
       state = mesecon.state.on
       paramtype = "light"
       light_source = 7
+      drop = {
+          items = {{
+              items = {'luablock:luablock_digilines'}
+          }}
+      }
   end
   local output_rules = {}
   local input_rules = {}
@@ -796,6 +931,7 @@ for f = 0, 1 do
   def.tiles = tiles
   def.paramtype = paramtype
   def.light_source = light_source
+  def.drop = drop
   def.mesecons = mesecons
 
   --register the node here
