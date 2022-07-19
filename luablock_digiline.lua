@@ -223,6 +223,11 @@ end
 -- expose luablock_send
 luablock.luablock_send = luablock_send
 
+local set_error = function(pos, error)
+    local meta = minetest.get_meta(pos)
+    meta:set_string("error", error or "")
+end
+
 local load_memory = function(pos)
     local meta = minetest.get_meta(pos)
     return minetest.deserialize(meta:get_string("memory")) or {}
@@ -268,6 +273,20 @@ end
 
 luablock.networks = load_networks()
 
+local set_network_error = function(pos, error)
+    local node = minetest.get_node(pos)
+    local nodedef = minetest.registered_nodes[node.name] or {}
+    if not nodedef.is_digilines_luablock == true then return end
+    minetest.get_meta(pos):set_string("network_error", error or "")
+end
+
+local get_network_error = function(pos)
+    local error = minetest.get_meta(pos):get_string("network_error")
+    if error ~= "" then
+        return error
+    end
+end
+
 local get_network_data = function(pos)
     local meta = minetest.get_meta(pos)
     local network_name = meta:get_string("network")
@@ -275,6 +294,7 @@ local get_network_data = function(pos)
     local node_def = minetest.registered_nodes[node.name]
     local data = {}
     data.pos = pos
+    data.is_luablock = (node_def.is_luablock == true)
     data.is_digilines_luablock = (node_def.is_digilines_luablock == true)
     data.is_private = true
     local network = luablock.networks[network_name]
@@ -285,23 +305,44 @@ local get_network_data = function(pos)
     return data
 end
 
-function luablock.network_send(from_pos, network, node, channel, msg)
-    if minetest.registered_nodes[node.name].is_digilines_luablock == true then
-        local nt = type(network)
-        if nt == "string" then
-            local network = luablock.networks[network]
-            if network then
-                local _msg = {
-                    type = "luablock_network_msg",
-                    snd = get_network_data(from_pos),
-                    msg = msg
-                }
+function luablock.network_set_response(network_name, response)
+    local network = luablock.networks[network_name]
+    if network then
+        network.response = response
+        minetest.after(5, function()
+            network.response = nil
+        end)
+    end
+end
+
+local network_get_response = function(network_name)
+    local network = luablock.networks[network_name]
+    if network then
+        return network.response
+    end
+end
+
+function luablock.network_send(from_pos, network_name, channel, msg)
+    local nt = type(network_name)
+    if nt == "string" then
+        set_network_error(from_pos)
+        local network = luablock.networks[network_name]
+        if network then
+            local node = minetest.get_node(network.pos)
+            local _msg = {
+                type = "luablock_network_msg",
+                snd = get_network_data(from_pos),
+                msg = msg
+            }
+            if minetest.registered_nodes[node.name].is_digilines_luablock then
                 luablock.handle_digilines_action(network.pos, node, channel, _msg)
-                return true
+                local response = network_get_response(network_name)
+                return true, response
             end
-        else
-            error("string expected, got "..nt)
         end
+        set_network_error(from_pos, "network error: network \""..network_name.."\" could not be found.")
+    else
+        error("string expected, got "..nt)
     end
     return false
 end
@@ -320,13 +361,13 @@ local set_network = function(pos, name)
         local network = luablock.networks[name]
         if not network or (minetest.pos_to_string(pos) == minetest.pos_to_string(network.pos)) then
             luablock.networks[name] = {name=name,pos=pos}
-            minetest.get_meta(pos):set_string("network_error", "")
+            set_network_error(pos)
         else
-            minetest.get_meta(pos):set_string("network_error", "network error: network "..
+            set_network_error(pos, "network error: network "..
                 "'"..name.."' is already registered at a different location.")
         end
     else
-        minetest.get_meta(pos):set_string("network_error", "")
+        set_network_error(pos)
     end
     save_networks()
 end
@@ -347,8 +388,27 @@ local luablock_digilines_execute_internal = function(pos, event)
         env.luablock_send = function(channel, msg)
             luablock_send(pos, channel, msg)
         end
-        env.luablock_network_send = function(network, channel, msg)
-            luablock.network_send(pos, network, minetest.get_node(pos), channel, msg)
+        env.luablock_network_send = function(network_name, channel, msg)
+            local data = get_network_data(pos)
+            if network_name ~= data.network_name then
+                set_network_error(pos)
+                return luablock.network_send(pos, network_name, channel, msg)
+            else
+                set_network_error(pos, "network error: a network cannot send a message to itself.")
+            end
+        end
+        env.luablock_network_set_response = function(response)
+            local data = get_network_data(pos)
+            local network_name = data.network_name
+            if luablock.networks[network_name] then
+                luablock.network_set_response(network_name, response)
+                set_network_error(pos)
+            else
+                set_network_error(pos, "network error: luablock is not set as a network.")
+            end
+        end
+        env.luablock_network_ping = function(network_name)
+            return type(luablock.networks[network_name]) == "table"
         end
         env.print = function(...)
             local params = {...}
@@ -432,18 +492,26 @@ local luablock_digilines_execute_internal = function(pos, event)
     local s_code = luablock.code[minetest.pos_to_string(pos)] or ""
     local code, errMsg = loadstring(s_code);
     local success, result = pcall(execute, pos, code)
-    local network_error = meta:get_string("network_error")
+    local network_error = get_network_error(pos)
     
-    if network_error ~= "" then
-        meta:set_string("error", network_error)
+    if network_error then
+        set_error(pos, network_error)
     end
 
-    if type(result) == "table" then
+    local set_err = false
+    local err = ""
+    if not code then
+        err = errMsg
+        set_err = true
+    elseif not success then
+        err = result
+        set_err = true
+    end
+    
+    if set_err then
+        set_error(pos, err)
+    else
         return result
-    elseif type(result) == "string" then
-        meta:set_string("error", "internal error:" .. result)
-    elseif type(result) ~= "nil" then
-        meta:set_string("error", "internal error: \"" .. type(result) .. "\" is not a valid return type.")
     end
     return {}
 end
@@ -478,7 +546,7 @@ local luablock_digilines_execute_external = function(pos, code, env, metatable, 
         return result.result
     else
         local meta = minetest.get_meta(pos)
-        meta:set_string("error", "external error:" .. result)
+        set_error(pos, "external error:" .. result)
     end
 end
 
@@ -486,6 +554,11 @@ end
 --Digiline Code--
 -----------------
 function luablock.handle_digilines_action(pos, node, channel, msg)
+    --ensure the area is loaded to prevent errors
+    minetest.load_area(
+        vector.offset(pos, 5, 5, 5),
+        vector.offset(pos, -5,-5,-5)
+    )
     local meta = minetest.get_meta(pos)
     local setchannel = meta:get_string("channel")
     local receive_all_events = meta:get_string("receive_all_events")
@@ -730,6 +803,7 @@ local preserve_metadata = function(pos, oldnode, oldmeta, drops)
         drops[1]:get_meta():set_string("channel", oldmeta.channel)
         drops[1]:get_meta():set_string("memory", oldmeta.memory)
         drops[1]:get_meta():set_string("old_pos", minetest.pos_to_string(pos))
+        drops[1]:get_meta():set_string("description", "Digilines Lua Block (With Code)")
     end
 end
 
@@ -762,6 +836,7 @@ local luablock_def = {
             end
         }
     },
+    is_luablock = true,
     is_digilines_luablock = true,
 
     preserve_metadata = preserve_metadata,
@@ -941,4 +1016,22 @@ end
 end
 end
 end
+end
+
+---------------------------------------------
+--Mesecons Lua Controller Block Environment--
+---------------------------------------------
+
+if minetest.get_modpath("mesecons_luacontroller_block") then
+
+    mesecon.register_luacontroller_block_modify_environment(function(pos, env)
+        env.luablock = env.luablock or {}
+        env.luablock.network_send = function(network_name, channel, msg)
+            return luablock.network_send(pos, network_name, channel, msg)
+        end
+        env.luablock.network_ping = function(network_name)
+            return type(luablock.networks[network_name]) == "table"
+        end
+    end)
+
 end

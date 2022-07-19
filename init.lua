@@ -42,6 +42,7 @@ minetest.register_on_shutdown(function()
 end)
 
 dofile(minetest.get_modpath("luablock") .. "/lbapi.lua")
+dofile(minetest.get_modpath("luablock") .. "/commands.lua")
 dofile(minetest.get_modpath("luablock") .. "/scripts.lua")
 dofile(minetest.get_modpath("luablock") .. "/luablock.lua")
 dofile(minetest.get_modpath("luablock") .. "/luablock_digiline.lua")

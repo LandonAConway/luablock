@@ -247,15 +247,15 @@ minetest.register_on_joinplayer(function(player)
             if luablock.valid_luatools[stack:get_name()] and listname == "tool" then
                 local _stack = luablock.luatool_init(stack)
                 inv:set_stack("tool", 1, _stack)
-                save_inventory(player, inv)
                 luablock.show_luatool_formspec(player)
             end
+            save_inventory(player, inv)
         end,
         on_take = function(inv, listname, index, stack, player)
             if luablock.valid_luatools[stack:get_name()] and listname == "tool" then
-                save_inventory(player, inv)
                 luablock.show_luatool_formspec(player)
             end
+            save_inventory(player, inv)
         end,
         on_move = function(inv, from_list, from_index, to_list, to_index, count, player)
             local stack = inv:get_stack(to_list, to_index)
@@ -263,13 +263,12 @@ minetest.register_on_joinplayer(function(player)
                 if to_list == "tool" then
                     local _stack = luablock.luatool_init(stack)
                     inv:set_stack("tool", 1, _stack)
-                    save_inventory(player, inv)
                     luablock.show_luatool_formspec(player)
                 else
-                    save_inventory(player, inv)
                     luablock.show_luatool_formspec(player)
                 end
             end
+            save_inventory(player, inv)
         end
     })
     load_inventory(player, inv)
@@ -282,7 +281,9 @@ local luatool_types = {
     "luablock:luatool_apple",
     "luablock:luatool_skeleton_key",
     "luablock:luatool_key",
-    "luablock:luatool_magentic_card"
+    "luablock:luatool_magentic_card",
+    "luablock:luatool_sim_card",
+    "luablock:luatool_sd_card"
 }
 
 local get_luatool_types_descriptions = function()
@@ -470,7 +471,9 @@ luablock.valid_luatools = {
     ["luablock:luatool_apple"] = true,
     ["luablock:luatool_skeleton_key"] = true,
     ["luablock:luatool_key"] = true,
-    ["luablock:luatool_magentic_card"] = true
+    ["luablock:luatool_magentic_card"] = true,
+    ["luablock:luatool_sim_card"] = true,
+    ["luablock:luatool_sd_card"] = true
 }
 
 luablock.default_luatool_callbacks = {
@@ -667,6 +670,81 @@ minetest.register_tool("luablock:luatool_magentic_card", {
         return result
     end,
 })
+
+minetest.register_tool("luablock:luatool_sim_card", {
+    description = "Lua Tool (Sim Card)",
+    inventory_image = "luablock_luatool_sim_card.png",
+    groups = {not_in_creative_inventory=1},
+
+    on_place = function(itemstack, placer, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(placer, itemstack, "on_place",
+            itemstack, placer, pointed_thing)
+        return result
+    end,
+    on_secondary_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_secondary_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    on_drop = function(itemstack, dropper, pos)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(dropper, itemstack, "on_drop",
+            itemstack, dropper, pos)
+        return result
+    end,
+    on_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    after_use = function(itemstack, user, node, digparams)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "after_use",
+            itemstack, user, node, digparams)
+        return result
+    end,
+})
+
+minetest.register_tool("luablock:luatool_sd_card", {
+    description = "Lua Tool (SD Card)",
+    inventory_image = "luablock_luatool_sd_card.png",
+    groups = {not_in_creative_inventory=1},
+
+    on_place = function(itemstack, placer, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(placer, itemstack, "on_place",
+            itemstack, placer, pointed_thing)
+        return result
+    end,
+    on_secondary_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_secondary_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    on_drop = function(itemstack, dropper, pos)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(dropper, itemstack, "on_drop",
+            itemstack, dropper, pos)
+        return result
+    end,
+    on_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    after_use = function(itemstack, user, node, digparams)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "after_use",
+            itemstack, user, node, digparams)
+        return result
+    end,
+})
+
 
 -- {
 --     "on_place",

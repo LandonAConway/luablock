@@ -80,3 +80,29 @@ for _, callback_type in pairs(callback_types) do
         run_callbacks(callback_type, ...)
     end)
 end
+
+
+------------------------------------
+--Lua Controller Block Environment--
+------------------------------------
+
+if minetest.get_modpath("mesecons_luacontroller_block") then
+
+    local registered_lcb_modify_environments = {}
+
+    function luablock.lbapi.env.register_lcb_modify_environment(name, func)
+        registered_lcb_modify_environments[name] = func
+    end
+
+    function luablock.lbapi.env.unregister_lcb_modify_environment(name)
+        registered_lcb_modify_environments[name] = nil
+    end
+
+    mesecon.register_luacontroller_block_modify_environment(function(pos, env)
+        env.luablock = {}
+        for _, func in pairs(registered_lcb_modify_environments) do
+            func(pos, env)
+        end
+    end)
+
+end

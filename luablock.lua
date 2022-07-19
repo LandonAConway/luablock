@@ -180,8 +180,10 @@ minetest.register_abm({
 local preserve_metadata = function(pos, oldnode, oldmeta, drops)
     local key = minetest.pos_to_string(pos)
     if type(luablock.code[key]) == "string" and luablock.code[key] ~= "" then
+        local description = minetest.registered_nodes[drops[1]:get_name()].description or ""
         luablock.itemstacks_code[key] = luablock.code[key]
         drops[1]:get_meta():set_string("old_pos", minetest.pos_to_string(pos))
+        drops[1]:get_meta():set_string("description", description.." (With Code)")
     end
 end
 
@@ -211,6 +213,8 @@ minetest.register_node("luablock:luablock_receptor_off", {
             rules = rules
         }
     },
+
+    is_luablock = true,
 
     preserve_metadata = preserve_metadata,
 
@@ -281,6 +285,8 @@ minetest.register_node("luablock:luablock_receptor_on", {
             rules = rules
         }
     },
+
+    is_luablock = true,
 
     preserve_metadata = preserve_metadata,
 
@@ -353,6 +359,8 @@ minetest.register_node("luablock:luablock_effector_off", {
             end
         }
     },
+
+    is_luablock = true,
 
     preserve_metadata = preserve_metadata,
 
@@ -434,6 +442,8 @@ minetest.register_node("luablock:luablock_effector_on", {
         }
     },
 
+    is_luablock = true,
+
     preserve_metadata = preserve_metadata,
 
     after_place_node = function(pos, placer, itemstack)
@@ -505,6 +515,8 @@ minetest.register_node("luablock:luablock_conductor_off", {
             rules = rules
         }
     },
+
+    is_luablock = true,
 
     preserve_metadata = preserve_metadata,
 
@@ -583,6 +595,8 @@ minetest.register_node("luablock:luablock_conductor_on", {
             rules = rules
         }
     },
+
+    is_luablock = true,
 
     preserve_metadata = preserve_metadata,
 

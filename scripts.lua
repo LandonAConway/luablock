@@ -154,10 +154,14 @@ end
 --Formspec--
 ------------
 
-local get_scripts_list = function()
+local get_scripts_list = function(escape)
     local list = {}
     for name, _ in pairs(luablock.scripts) do
-        table.insert(list, name)
+        local entry = name
+        if escape then
+            entry = minetest.formspec_escape(entry)
+        end
+        table.insert(list, entry)
     end
     table.sort(list)
     return list
@@ -177,7 +181,7 @@ end
 
 local scripts_formspec = function(player, index)
     index = index or 1
-    local scripts_list = get_scripts_list()
+    local scripts_list = get_scripts_list(true)
     local scripts = table.concat(scripts_list, ",")
     local script = { name = "", code = "", run_when_server_starts = false }
     if scripts_list[index] then
@@ -186,7 +190,7 @@ local scripts_formspec = function(player, index)
     local formspec = "formspec_version[5]" ..
     "size[25,15]" ..
     "checkbox[8.5,0.5;run_when_server_starts;Run When Server Starts;"..tostring(script.run_when_server_starts).."]" ..
-    "textlist[0.5,0.8;7.5,11.7;scripts;"..minetest.formspec_escape(scripts)..";"..index..";false]" ..
+    "textlist[0.5,0.8;7.5,11.7;scripts;"..scripts..";"..index..";false]" ..
     "label[0.5,0.5;Scripts]" ..
     "button[16.6,13.7;7.9,0.8;run;Run]" ..
     "button[8.5,13.7;7.9,0.8;save;Save]" ..
