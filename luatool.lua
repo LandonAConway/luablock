@@ -295,6 +295,20 @@ local get_luatool_types_descriptions = function()
     return descriptions
 end
 
+-- "formspec_version[6]" ..
+-- "size[25,19.7]" ..
+-- "list[detached:;tool;0.5,0.9;1,1;0]" ..
+-- "field[2,1.2;8.3,0.7;description;Description;]" ..
+-- "button[5.5,2.1;4.8,0.5;create;Create Lua Tool]" ..
+-- "button[0.5,2.8;9.8,0.5;wielded_item;Wielded Item]" ..
+-- "list[detached:;main;0.5,4;8,8;0]" ..
+-- "list[current_player;main;0.5,14.5;8,4;0]" ..
+-- "textarea[11.1,0.9;13.4,13.6;code;Code;]" ..
+-- "textarea[11.1,15.4;13.4,2.5;error;Error;]" ..
+-- "button[11.1,18.4;6.4,0.8;save;Save]" ..
+-- "button[18.1,18.4;6.4,0.8;run;Run]" ..
+-- "dropdown[0.5,2.1;4.8,0.5;luatool_type;Lua Tool,Lua Tool (Apple),Lua Tool (Magnetic Card);1;true]"
+
 -- "formspec_version[5]" ..
 -- "size[25,19]" ..
 -- "list[detached:;tool;0.5,0.9;1,1;0]" ..
@@ -322,18 +336,19 @@ luablock.luatool_formspec = function(player)
         description = stack:get_meta():get_string("description")
     end
 
-    local formspec = "formspec_version[5]" ..
-    "size[25,19]" ..
+    local formspec = "formspec_version[6]" ..
+    "size[25,19.7]" ..
     "list[detached:"..inv_location..";tool;0.5,0.9;1,1;0]" ..
-    "field[2,1.05;8.3,0.7;description;;"..minetest.formspec_escape(description).."]" ..
-    "dropdown[0.5,2.1;4.8,0.5;luatool_type;"..table.concat(get_luatool_types_descriptions(), ",")..";1;true]"..
-    "button[5.5,2.1;4.8,0.5;create;Create Lua Tool]"..
-    "list[detached:"..inv_location..";main;0.5,3.3;8,8;0]" ..
-    "list[current_player;main;0.5,13.8;8,4;0]" ..
-    "textarea[11.1,0.9;13.4,12.9;code;Code;"..minetest.formspec_escape(code).."]" ..
-    "textarea[11.1,14.7;13.4,2.5;error;Error;"..minetest.formspec_escape(error).."]"..
-    "button[11.1,17.7;6.4,0.8;save;Save]" ..
-    "button[18.1,17.7;6.4,0.8;run;Run]" 
+    "field[2,1.2;8.3,0.7;description;;"..minetest.formspec_escape(description).."]" ..
+    "dropdown[0.5,2.1;4.8,0.5;luatool_type;"..table.concat(get_luatool_types_descriptions(), ",")..";1;true]" ..
+    "button[5.5,2.1;4.8,0.5;create;Create Lua Tool]" ..
+    "button[0.5,2.8;9.8,0.5;wielded_item;Wielded Item]" ..
+    "list[detached:"..inv_location..";main;0.5,4;8,8;0]" ..
+    "list[current_player;main;0.5,14.5;8,4;0]" ..
+    "textarea[11.1,0.9;13.4,13.6;code;Code;"..minetest.formspec_escape(code).."]" ..
+    "textarea[11.1,15.4;13.4,2.5;error;Error;"..minetest.formspec_escape(error).."]" ..
+    "button[11.1,18.4;6.4,0.8;save;Save]" ..
+    "button[18.1,18.4;6.4,0.8;run;Run]"
 
     return formspec
 end
@@ -371,6 +386,25 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
                     luablock.save_luatools()
                     luatool_execute(stack)
                 end
+            end
+            if fields.wielded_item then
+                local wielded_item = player:get_wielded_item()
+                if luablock.valid_luatools[stack:get_name()] then
+                    local allow_swap = wielded_item:get_count() == 0
+                    if allow_swap then
+                        local _swap = inv:remove_item("tool", stack)
+                        player:set_wielded_item(_swap)
+                        luablock.show_luatool_formspec(player)
+                    end
+                elseif stack:get_count() == 0 then
+                    if luablock.valid_luatools[wielded_item:get_name()] then
+                        local _stack = luablock.luatool_init(wielded_item)
+                        inv:set_stack("tool", 1, _stack)
+                        player:set_wielded_item(ItemStack(""))
+                        luablock.show_luatool_formspec(player)
+                    end
+                end
+                luablock.save_luatools()
             end
             if fields.create then
                 local luatool_type_index = tonumber(fields.luatool_type)

@@ -2,15 +2,19 @@ luablock.lbapi = {}
 luablock.lbapi.callbacks = {}
 luablock.lbapi.env = {}
 
+local function show_error(error)
+    for _, plr in pairs(minetest.get_connected_players()) do
+        if minetest.check_player_privs(plr, {server=true}) then
+            minetest.chat_send_player(plr:get_player_name(), "[LBAPI ERROR] :: "..error)
+        end
+    end
+end
+
 local function run_callbacks(callback_type, ...)
     for _, func in pairs(luablock.lbapi.callbacks["registered_"..callback_type]) do
         local status, err = pcall(func, ...)
         if not status then
-            for _, plr in pairs(minetest.get_connected_players()) do
-                if minetest.check_player_privs(plr, {server=true}) then
-                    minetest.chat_send_player(plr:get_player_name(), "[LBAPI ERROR] :: "..err)
-                end
-            end
+            show_error(err)
         else
             if type(err) == "table" then
                 return unpack(err)
@@ -78,6 +82,20 @@ for _, callback_type in pairs(callback_types) do
     end
     minetest["register_"..callback_type](function(...)
         run_callbacks(callback_type, ...)
+    end)
+end
+
+
+--other functions that cannot be registered by the above code will be registered here
+
+function luablock.lbapi.env.mtafter(t, f)
+    if type(t) ~= "number" then return end
+    if type(f) ~= "function" then return end
+    minetest.after(t, function()
+        local result, error = pcall(f)
+        if not result then
+            show_error(error)
+        end
     end)
 end
 
