@@ -1,4 +1,4 @@
-luablock = {}
+luablock = {} --
 
 luablock.mod_storage = {}
 local mod_storage = minetest.get_mod_storage()
