@@ -503,11 +503,16 @@ minetest.register_chatcommand("luatool", {
 luablock.valid_luatools = {
     ["luablock:luatool"] = true,
     ["luablock:luatool_apple"] = true,
+    ["luablock:luatool_book"] = true,
     ["luablock:luatool_skeleton_key"] = true,
     ["luablock:luatool_key"] = true,
     ["luablock:luatool_magentic_card"] = true,
     ["luablock:luatool_sim_card"] = true,
-    ["luablock:luatool_sd_card"] = true
+    ["luablock:luatool_sd_card"] = true,
+    ["luablock:luatool_blaster"] = true,
+    ["luablock:luatool_sword_steel"] = true,
+    ["luablock:luatool_sword_diamond"] = true,
+    ["luablock:luatool_paper"] = true
 }
 
 luablock.default_luatool_callbacks = {
@@ -519,6 +524,16 @@ luablock.default_luatool_callbacks = {
     on_use = function(itemstack, user, pointed_thing) end,
     after_use = function(itemstack, user, node, digparams) end,
 }
+
+luablock.luatool = { callbacks = {
+    default = {
+
+    }
+} }
+
+--------------------------
+--Builtin Registerations--
+--------------------------
 
 minetest.register_tool("luablock:luatool", {
     description = "Lua Tool",
@@ -560,6 +575,43 @@ minetest.register_tool("luablock:luatool", {
 minetest.register_tool("luablock:luatool_apple", {
     description = "Lua Tool (Apple)",
     inventory_image = "default_apple.png",
+    groups = {not_in_creative_inventory=1},
+
+    on_place = function(itemstack, placer, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(placer, itemstack, "on_place",
+            itemstack, placer, pointed_thing)
+        return result
+    end,
+    on_secondary_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_secondary_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    on_drop = function(itemstack, dropper, pos)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(dropper, itemstack, "on_drop",
+            itemstack, dropper, pos)
+        return result
+    end,
+    on_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    after_use = function(itemstack, user, node, digparams)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "after_use",
+            itemstack, user, node, digparams)
+        return result
+    end,
+})
+
+minetest.register_tool("luablock:luatool_book", {
+    description = "Lua Tool (Book)",
+    inventory_image = "default_book.png",
     groups = {not_in_creative_inventory=1},
 
     on_place = function(itemstack, placer, pointed_thing)
@@ -745,6 +797,154 @@ minetest.register_tool("luablock:luatool_sim_card", {
 minetest.register_tool("luablock:luatool_sd_card", {
     description = "Lua Tool (SD Card)",
     inventory_image = "luablock_luatool_sd_card.png",
+    groups = {not_in_creative_inventory=1},
+
+    on_place = function(itemstack, placer, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(placer, itemstack, "on_place",
+            itemstack, placer, pointed_thing)
+        return result
+    end,
+    on_secondary_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_secondary_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    on_drop = function(itemstack, dropper, pos)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(dropper, itemstack, "on_drop",
+            itemstack, dropper, pos)
+        return result
+    end,
+    on_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    after_use = function(itemstack, user, node, digparams)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "after_use",
+            itemstack, user, node, digparams)
+        return result
+    end,
+})
+
+minetest.register_tool("luablock:luatool_blaster", {
+    description = "Lua Tool (Blaster)",
+    inventory_image = "luablock_luatool_blaster.png",
+    groups = {not_in_creative_inventory=1},
+
+    on_place = function(itemstack, placer, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(placer, itemstack, "on_place",
+            itemstack, placer, pointed_thing)
+        return result
+    end,
+    on_secondary_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_secondary_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    on_drop = function(itemstack, dropper, pos)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(dropper, itemstack, "on_drop",
+            itemstack, dropper, pos)
+        return result
+    end,
+    on_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    after_use = function(itemstack, user, node, digparams)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "after_use",
+            itemstack, user, node, digparams)
+        return result
+    end,
+})
+
+minetest.register_tool("luablock:luatool_sword_steel", {
+    description = "Lua Tool (Steel Sword)",
+    inventory_image = "default_tool_steelsword.png",
+    groups = {not_in_creative_inventory=1},
+
+    on_place = function(itemstack, placer, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(placer, itemstack, "on_place",
+            itemstack, placer, pointed_thing)
+        return result
+    end,
+    on_secondary_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_secondary_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    on_drop = function(itemstack, dropper, pos)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(dropper, itemstack, "on_drop",
+            itemstack, dropper, pos)
+        return result
+    end,
+    on_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    after_use = function(itemstack, user, node, digparams)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "after_use",
+            itemstack, user, node, digparams)
+        return result
+    end,
+})
+
+minetest.register_tool("luablock:luatool_sword_diamond", {
+    description = "Lua Tool (Diamond)",
+    inventory_image = "default_tool_diamondword.png",
+    groups = {not_in_creative_inventory=1},
+
+    on_place = function(itemstack, placer, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(placer, itemstack, "on_place",
+            itemstack, placer, pointed_thing)
+        return result
+    end,
+    on_secondary_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_secondary_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    on_drop = function(itemstack, dropper, pos)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(dropper, itemstack, "on_drop",
+            itemstack, dropper, pos)
+        return result
+    end,
+    on_use = function(itemstack, user, pointed_thing)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "on_use",
+            itemstack, user, pointed_thing)
+        return result
+    end,
+    after_use = function(itemstack, user, node, digparams)
+        luablock.luatool_activate(itemstack)
+        local used_default, result = call_luatool_callback(user, itemstack, "after_use",
+            itemstack, user, node, digparams)
+        return result
+    end,
+})
+
+minetest.register_tool("luablock:luatool_paper", {
+    description = "Lua Tool (Paper)",
+    inventory_image = "default_paper.png",
     groups = {not_in_creative_inventory=1},
 
     on_place = function(itemstack, placer, pointed_thing)
