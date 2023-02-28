@@ -257,7 +257,9 @@ minetest.register_node("luablock:luablock_receptor_off", {
             minetest.show_formspec(clicker:get_player_name(), "luablock:luablock_view_formspec",
                 luablock.formspec_view(pos))
         end
-    end
+    end,
+
+    on_blast = function(pos, intensity) end
 })
 
 minetest.register_node("luablock:luablock_receptor_on", {
@@ -333,7 +335,9 @@ minetest.register_node("luablock:luablock_receptor_on", {
 
     after_destruct = function(pos, oldnode)
         luablock.code[minetest.pos_to_string(pos)] = nil
-    end
+    end,
+
+    on_blast = function(pos, intensity) end
 })
 
 minetest.register_node("luablock:luablock_effector_off", {
@@ -409,7 +413,9 @@ minetest.register_node("luablock:luablock_effector_off", {
 
     after_destruct = function(pos, oldnode)
         luablock.code[minetest.pos_to_string(pos)] = nil
-    end
+    end,
+
+    on_blast = function(pos, intensity) end
 })
 
 minetest.register_node("luablock:luablock_effector_on", {
@@ -491,7 +497,9 @@ minetest.register_node("luablock:luablock_effector_on", {
 
     after_destruct = function(pos, oldnode)
         luablock.code[minetest.pos_to_string(pos)] = nil
-    end
+    end,
+
+    on_blast = function(pos, intensity) end
 })
 
 minetest.register_node("luablock:luablock_conductor_off", {
@@ -565,7 +573,9 @@ minetest.register_node("luablock:luablock_conductor_off", {
 
     after_destruct = function(pos, oldnode)
         luablock.code[minetest.pos_to_string(pos)] = nil
-    end
+    end,
+
+    on_blast = function(pos, intensity) end
 })
 
 minetest.register_node("luablock:luablock_conductor_on", {
@@ -645,7 +655,9 @@ minetest.register_node("luablock:luablock_conductor_on", {
 
     after_destruct = function(pos, oldnode)
         luablock.code[minetest.pos_to_string(pos)] = nil
-    end
+    end,
+
+    on_blast = function(pos, intensity) end
 })
 
 function luablock.is_on(pos)

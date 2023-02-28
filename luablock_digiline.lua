@@ -892,6 +892,8 @@ local luablock_def = {
         luablock.callbacks[minetest.pos_to_string(pos)] = nil
     end,
 
+    on_blast = function(pos, intensity) end,
+
     -- registerable callbacks in luablock code
     on_timer = function(pos, ...)
         local result

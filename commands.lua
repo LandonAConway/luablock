@@ -49,12 +49,14 @@ local luacommand_execute = function(name, code)
     end
     
     if has_err then
-        return false, err
+        return tostring(err)
     end
-    local _result
-    if _result == nil then
-        _result = ""
+
+    local _result = ""
+    if result then
+        _result = tostring(result)
     end
+
     return tostring(_result)
 end
 

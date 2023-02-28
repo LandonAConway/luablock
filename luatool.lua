@@ -8,7 +8,8 @@ function luablock.save_luatools()
         luatools[k] = {
             code = v.code,
             error = v.error,
-            memory = v.memory
+            memory = v.memory,
+            local_memory = v.local_memory
         }
     end
     luablock.mod_storage.set_string("luatools", minetest.serialize(luatools))
@@ -81,16 +82,52 @@ luablock.luatool_init = function(stack)
             uid = create_uid(15)
         until not luablock.luatools[uid]
         stack:get_meta():set_string("uid",uid)
+        stack_uid = uid
         luablock.luatools[uid] = {
             code = "",
             error = "",
             memory = {},
             callbacks = {},
-            commands = {},
+            commands = {}
         }
+    end
+    --must be done here due to updates
+    local luatool = luablock.luatools[stack_uid]
+    if not luatool.local_memory or stack:get_meta():get_string("local_mem_uid") == "" then
+        luatool.local_memory = {}
+        local local_mem_uid = create_uid(15)
+        luablock.luatools[stack_uid].local_memory[local_mem_uid] = {}
+        stack:get_meta():set_string("local_mem_uid", local_mem_uid)
     end
     luablock.save_luatools()
     return stack
+end
+
+function luablock.luatool_copy(stack)
+    stack = luablock.luatool_init(stack)
+    local luatool = luablock.get_luatool(stack)
+    local old_local_mem_uid = stack:get_meta():get_string("local_mem_uid")
+    local local_mem_uid = create_uid(15)
+    repeat
+        local_mem_uid = create_uid(15)
+    until not luatool.local_memory[local_mem_uid]
+    luatool.local_memory[local_mem_uid] = {}
+    for k, v in pairs(luatool.local_memory[old_local_mem_uid]) do
+        luatool.local_memory[local_mem_uid][k] = v
+    end
+    stack:get_meta():set_string("local_mem_uid", local_mem_uid)
+    return stack
+end
+
+function luablock.luatool_get_local_memory(location)
+    if type(location) == "userdata" then
+        local stack = luablock.luatool_init(location)
+        local local_mem_uid = stack:get_meta():get_string("local_mem_uid")
+        local luatool = luablock.get_luatool(stack)
+        return luatool.local_memory[local_mem_uid]
+    elseif type(location) == "string" then
+        return {}
+    end
 end
 
 ---------------------------
@@ -149,8 +186,9 @@ local set_error = function(location, err)
     luablock.get_luatool(location).error = err
 end
 
-local luatool_execute = function(location)
+local luatool_execute = function(location, event)
     local luatool = luablock.get_luatool(location)
+    event = event or { type="unspecified" }
     local execute = function(_code)
         --environment
         local env = {}
@@ -158,7 +196,19 @@ local luatool_execute = function(location)
             callbacks = {},
             commands = {},
             memory = luatool.memory,
+            is_valid_luatool = function(name)
+                return luablock.valid_luatools[name] == true
+            end,
+            get_local_memory = function(stack)
+                if luablock.valid_luatools[stack:get_name()] then
+                    return luablock.luatool_get_local_memory(stack)
+                end
+            end
         }
+        env.event = event
+        env.save_luatools = function()
+            luablock.save_luatools()
+        end
         env.print = function(...)
             local params = {...}
             if params[2] and type(params[1]) == "string" then
@@ -238,9 +288,14 @@ local save_inventory = function(player, inv)
 end
 
 local load_inventory = function(player, inv)
-    inv:set_lists(deserialize_lists(luablock.mod_storage.get_string("luatool_inv_"..player:get_player_name())))
+    local lists = deserialize_lists(luablock.mod_storage.get_string("luatool_inv_"..player:get_player_name()))
+    inv:set_lists(lists)
+    if luablock.last_build < 100 then
+        inv:set_list("main1", lists["main"])
+    end
 end
 
+luablock.luatool_fsdata = {}
 minetest.register_on_joinplayer(function(player)
     local inv = minetest.create_detached_inventory("luatools_"..player:get_player_name(),{
         on_put = function(inv, listname, index, stack, player)
@@ -274,16 +329,30 @@ minetest.register_on_joinplayer(function(player)
     load_inventory(player, inv)
     inv:set_size("tool", 1*1)
     inv:set_size("main", 8*8)
+    inv:set_size("main1", 8*8)
+    inv:set_size("main2", 8*8)
+    inv:set_size("main3", 8*8)
+    inv:set_size("main4", 8*8)
+    inv:set_size("main5", 8*8)
+
+    local name = player:get_player_name()
+    luablock.luatool_fsdata[name] = {}
+    luablock.luatool_fsdata[name].page = luablock.luatool_fsdata[name].page or 1
 end)
 
 local luatool_types = {
     "luablock:luatool",
     "luablock:luatool_apple",
+    "luablock:luatool_book",
     "luablock:luatool_skeleton_key",
     "luablock:luatool_key",
     "luablock:luatool_magentic_card",
     "luablock:luatool_sim_card",
-    "luablock:luatool_sd_card"
+    "luablock:luatool_sd_card",
+    "luablock:luatool_blaster",
+    "luablock:luatool_sword_steel",
+    "luablock:luatool_sword_diamond",
+    "luablock:luatool_paper"
 }
 
 local get_luatool_types_descriptions = function()
@@ -294,14 +363,18 @@ local get_luatool_types_descriptions = function()
     end
     return descriptions
 end
-
 -- "formspec_version[6]" ..
 -- "size[25,19.7]" ..
 -- "list[detached:;tool;0.5,0.9;1,1;0]" ..
 -- "field[2,1.2;8.3,0.7;description;Description;]" ..
 -- "button[5.5,2.1;4.8,0.5;create;Create Lua Tool]" ..
--- "button[0.5,2.8;9.8,0.5;wielded_item;Wielded Item]" ..
--- "list[detached:;main;0.5,4;8,8;0]" ..
+-- "button[0.5,2.8;4.8,0.5;wielded_item;Wielded Item]" ..
+-- "button[4,3.5;1.1,0.4;back;<<]" ..
+-- "label[5.3,3.7;1]" ..
+-- "button[5.7,3.5;1,0.4;next;>>]" ..
+-- "button[5.5,2.8;2.3,0.5;copy;Copy]" ..
+-- "button[8,2.8;2.3,0.5;clone;Clone]" ..
+-- "list[detached:;main;0.5,4.1;8,8;0]" ..
 -- "list[current_player;main;0.5,14.5;8,4;0]" ..
 -- "textarea[11.1,0.9;13.4,13.6;code;Code;]" ..
 -- "textarea[11.1,15.4;13.4,2.5;error;Error;]" ..
@@ -323,8 +396,10 @@ end
 -- "dropdown[0.5,2.1;4.8,0.5;luatool_type;Lua Tool,Lua Tool (Apple),Lua Tool (Magnetic Card);1;true]"
 
 luablock.luatool_formspec = function(player)
+    local name = player:get_player_name()
     local inv_location = "luatools_"..player:get_player_name()
     local inv = minetest.get_inventory({type="detached",name=inv_location})
+    local page = luablock.luatool_fsdata[name].page
     local stack = inv:get_stack("tool",1)
     local luatool = luablock.get_luatool(stack)
     local code = ""
@@ -342,8 +417,13 @@ luablock.luatool_formspec = function(player)
     "field[2,1.2;8.3,0.7;description;;"..minetest.formspec_escape(description).."]" ..
     "dropdown[0.5,2.1;4.8,0.5;luatool_type;"..table.concat(get_luatool_types_descriptions(), ",")..";1;true]" ..
     "button[5.5,2.1;4.8,0.5;create;Create Lua Tool]" ..
-    "button[0.5,2.8;9.8,0.5;wielded_item;Wielded Item]" ..
-    "list[detached:"..inv_location..";main;0.5,4;8,8;0]" ..
+    "button[0.5,2.8;4.8,0.5;wielded_item;Wielded Item]" ..
+    "button[5.5,2.8;2.3,0.5;clone;Clone]" ..
+    "button[8,2.8;2.3,0.5;copy;Copy]" ..
+    "button[4,3.5;1.1,0.4;back;<<]" ..
+    "label[5.3,3.7;"..page.."]" ..
+    "button[5.7,3.5;1,0.4;next;>>]" ..
+    "list[detached:"..inv_location..";main"..page..";0.5,4.1;8,8;0]" ..
     "list[current_player;main;0.5,14.5;8,4;0]" ..
     "textarea[11.1,0.9;13.4,13.6;code;Code;"..minetest.formspec_escape(code).."]" ..
     "textarea[11.1,15.4;13.4,2.5;error;Error;"..minetest.formspec_escape(error).."]" ..
@@ -372,6 +452,7 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
         if is_approved then
             local inv = minetest.get_inventory({type="detached",name="luatools_"..player:get_player_name()})
             local stack = inv:get_stack("tool", 1)
+            local name = player:get_player_name()
             if luablock.valid_luatools[stack:get_name()] then
                 local luatool = luablock.get_luatool(stack)
                 if fields.save then
@@ -379,12 +460,14 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
                     set_luatool_stack(player, stack)
                     luatool.code = fields.code
                     luablock.save_luatools()
+                    luablock.show_luatool_formspec(player)
                 elseif fields.run then
                     stack:get_meta():set_string("description", fields.description)
                     set_luatool_stack(player, stack)
                     luatool.code = fields.code
                     luablock.save_luatools()
-                    luatool_execute(stack)
+                    luatool_execute(stack, {type="program",stack=stack})
+                    luablock.show_luatool_formspec(player)
                 end
             end
             if fields.wielded_item then
@@ -413,8 +496,16 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
                     luatool_type = luatool_types[luatool_type_index]
                 end
                 local oldstack = inv:remove_item("tool", stack)
-                if inv:room_for_item("main", oldstack) then
-                    inv:add_item("main", oldstack)
+                if inv:room_for_item("main1", oldstack) then
+                    inv:add_item("main1", oldstack)
+                elseif inv:room_for_item("main2", oldstack) then
+                    inv:add_item("main2", oldstack)
+                elseif inv:room_for_item("main3", oldstack) then
+                    inv:add_item("main3", oldstack)
+                elseif inv:room_for_item("main4", oldstack) then
+                    inv:add_item("main4", oldstack)
+                elseif inv:room_for_item("main5", copy) then
+                    inv:add_item("main5", copy)
                 else
                     minetest.item_drop(oldstack, player, player:get_pos())
                 end
@@ -425,6 +516,51 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
                 local newluatool = luablock.get_luatool(newstack)
                 newluatool.code = fields.code
                 luablock.save_luatools()
+            elseif fields.clone then
+                if luablock.valid_luatools[stack:get_name()] then
+                    local copy = luablock.luatool_copy(stack)
+                    if inv:room_for_item("main1", copy) then
+                        inv:add_item("main1", copy)
+                    elseif inv:room_for_item("main2", copy) then
+                        inv:add_item("main2", copy)
+                    elseif inv:room_for_item("main3", copy) then
+                        inv:add_item("main3", copy)
+                    elseif inv:room_for_item("main4", copy) then
+                        inv:add_item("main4", copy)
+                    elseif inv:room_for_item("main5", copy) then
+                        inv:add_item("main5", copy)
+                    else
+                        minetest.item_drop(copy, player, player:get_pos())
+                    end
+                end
+            elseif fields.copy then
+                if luablock.valid_luatools[stack:get_name()] then
+                    if inv:room_for_item("main1", stack) then
+                        inv:add_item("main1", stack)
+                    elseif inv:room_for_item("main2", stack) then
+                        inv:add_item("main2", stack)
+                    elseif inv:room_for_item("main3", stack) then
+                        inv:add_item("main3", stack)
+                    elseif inv:room_for_item("main4", stack) then
+                        inv:add_item("main4", stack)
+                    elseif inv:room_for_item("main5", stack) then
+                        inv:add_item("main5", stack)
+                    else
+                        minetest.item_drop(stack, player, player:get_pos())
+                    end
+                end
+            elseif fields.back then
+                luablock.luatool_fsdata[name].page = luablock.luatool_fsdata[name].page - 1
+                if luablock.luatool_fsdata[name].page < 1 then
+                    luablock.luatool_fsdata[name].page = 1
+                end
+                luablock.show_luatool_formspec(player)
+            elseif fields.next then
+                luablock.luatool_fsdata[name].page = luablock.luatool_fsdata[name].page + 1
+                if luablock.luatool_fsdata[name].page > 5 then
+                    luablock.luatool_fsdata[name].page = 5
+                end
+                luablock.show_luatool_formspec(player)
             end
         end
     end
@@ -465,7 +601,7 @@ local execute_luatool_command = function(location, command, name, text)
         local result, missing_privs = get_missing_privs(name, commanddef.privs or {})
         if result then
             if type(commanddef.func) == "function" then
-                local status, result, message = pcall(commanddef.func, name, text)
+                local status, result, message = pcall(commanddef.func, name, text, player:get_wielded_item())
                 if not status then
                     return false, "Lua Tool Command Error: "..tostring(result)
                 end
@@ -488,7 +624,14 @@ minetest.register_chatcommand("luatool", {
             if command then
                 table.remove(_params, 1)
                 local text = table.concat(_params, " ")
-                return execute_luatool_command(wielded_item, command, name, text)
+                local value, message = execute_luatool_command(wielded_item, command, name, text)
+                local _message = message
+                message = tostring(message)
+                if _message == nil then message = nil end
+                if value == nil and message then
+                    value = true
+                end
+                return value, message
             end
             return false, "Please type a command."
         end
@@ -500,20 +643,10 @@ minetest.register_chatcommand("luatool", {
 --Lua Tool Registration--
 -------------------------
 
-luablock.valid_luatools = {
-    ["luablock:luatool"] = true,
-    ["luablock:luatool_apple"] = true,
-    ["luablock:luatool_book"] = true,
-    ["luablock:luatool_skeleton_key"] = true,
-    ["luablock:luatool_key"] = true,
-    ["luablock:luatool_magentic_card"] = true,
-    ["luablock:luatool_sim_card"] = true,
-    ["luablock:luatool_sd_card"] = true,
-    ["luablock:luatool_blaster"] = true,
-    ["luablock:luatool_sword_steel"] = true,
-    ["luablock:luatool_sword_diamond"] = true,
-    ["luablock:luatool_paper"] = true
-}
+luablock.valid_luatools = {}
+for _, itemstring in pairs(luatool_types) do
+    luablock.valid_luatools[itemstring] = true
+end
 
 luablock.default_luatool_callbacks = {
     on_place = function(itemstack, placer, pointed_thing) end,

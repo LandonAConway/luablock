@@ -1,4 +1,4 @@
-luablock = {} --
+luablock = {}
 
 luablock.mod_storage = {}
 local mod_storage = minetest.get_mod_storage()
@@ -8,6 +8,11 @@ end
 function luablock.mod_storage.get_string(key)
     return mod_storage:get_string(key)
 end
+
+--configure build number
+luablock.build = 100
+luablock.last_build = tonumber(mod_storage:get_string("last_build")) or 0
+mod_storage:set_string("last_build", luablock.build)
 
 minetest.register_privilege("luablock", { 
     description = "Allows player to place, dig, view, and edit Lua Blocks.",
