@@ -2,6 +2,42 @@
 --Saving & Loading--
 --------------------
 
+local function remove_functions(x)
+	local tp = type(x)
+	if tp == "function" then
+		return nil
+	end
+
+	-- Make sure to not serialize the same table multiple times, otherwise
+	-- writing mem.test = mem in the Luacontroller will lead to infinite recursion
+	local seen = {}
+
+	local function rfuncs(x)
+		if x == nil then return end
+		if seen[x] then return end
+		seen[x] = true
+		if type(x) ~= "table" then return end
+
+		for key, value in pairs(x) do
+			if type(key) == "function" or type(value) == "function"
+            or type(key) == "userdata" or type(value) == "userdata" then
+				x[key] = nil
+			else
+				if type(key) == "table" then
+					rfuncs(key)
+				end
+				if type(value) == "table" then
+					rfuncs(value)
+				end
+			end
+		end
+	end
+
+	rfuncs(x)
+
+	return x
+end
+
 function luablock.save_luatools()
     local luatools = {}
     for k, v in pairs(luablock.luatools) do
@@ -12,6 +48,7 @@ function luablock.save_luatools()
             local_memory = v.local_memory
         }
     end
+    luatools = remove_functions(luatools)
     luablock.mod_storage.set_string("luatools", minetest.serialize(luatools))
 end
 
